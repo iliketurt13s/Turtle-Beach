@@ -63,6 +63,8 @@ public class BuildModeController : MonoBehaviour
     [Header("Placement Restrictions")]
     [Tooltip("Tiles, measured from the map center (where the nest always sits), kept clear of buildings.")]
     [SerializeField, Range(0, 20)] private int minDistanceFromNest = 3;
+    [Tooltip("Maximum number of Turtle Beds that can be placed at once. Once reached, placing another is blocked (ghost tints invalid, click does nothing) — it stays selectable/cyclable in build mode, it just can't be placed.")]
+    [SerializeField, Min(0)] private int maxTurtleBeds = 5;
 
     private Camera cam;
     private GameObject ghostObject;
@@ -72,11 +74,6 @@ public class BuildModeController : MonoBehaviour
     private Color validGhostColor;
     private Vector3Int currentCell;
     private Vector2 pressPosition;
-
-    // Turtles wandering across a tile shouldn't block building there, so the
-    // occupancy check below excludes this layer and blocks on everything else
-    // (buildings, nature/resource nodes, the nest, ...).
-    private int turtleLayer;
 
     private void Awake()
     {
@@ -90,7 +87,12 @@ public class BuildModeController : MonoBehaviour
         Instance = this;
 
         cam = Camera.main;
-        turtleLayer = LayerMask.NameToLayer("Turtle");
+
+        // Each BuildableDefinition lives on its buildable's prefab asset, not
+        // a scene instance (this references it directly to read/instantiate)
+        // — so its price-scaling state otherwise carries over from a
+        // previous game rather than resetting like normal scene state does.
+        ResetAllPriceScaling();
 
         unlockedBuildables = new HashSet<BuildableDefinition>();
         if (initiallyUnlocked != null)
@@ -107,6 +109,20 @@ public class BuildModeController : MonoBehaviour
     {
         if (Instance == this) Instance = null;
         if (ghostObject != null) Destroy(ghostObject);
+    }
+
+    /// <summary>Resets every configured buildable's price scaling back to its Inspector-authored base (see BuildableDefinition.ResetPriceScaling) — buildables and foodHoldingBuildable are separate fields, so both are covered here even though foodHoldingBuildable is deliberately left out of normal scroll-cycling.</summary>
+    private void ResetAllPriceScaling()
+    {
+        if (buildables != null)
+        {
+            foreach (BuildableDefinition b in buildables)
+            {
+                if (b != null) b.ResetPriceScaling();
+            }
+        }
+
+        if (foodHoldingBuildable != null) foodHoldingBuildable.ResetPriceScaling();
     }
 
     /// <summary>Selects a buildable by index, e.g. from a future selection UI or scroll-wheel cycling. Wraps out-of-range indices in either direction, skipping any buildable not yet unlocked.</summary>
@@ -136,6 +152,9 @@ public class BuildModeController : MonoBehaviour
         if (buildable != null) unlockedBuildables.Add(buildable);
     }
 
+    /// <summary>True if buildable is currently placeable — either authored in Initially Unlocked or unlocked mid-run via Unlock. Lets an upgrade card gate itself behind a specific building already being unlocked (see IRequiresBuilding), so "branch" upgrades only start appearing once their building does.</summary>
+    public bool IsUnlocked(BuildableDefinition buildable) => buildable != null && unlockedBuildables.Contains(buildable);
+
     /// <summary>Called by UpgradeSelectionUI whenever a food-granting card (see IGrantsFoodItem) is picked. No-ops if a Food Building already exists, one is already being forced, or none is configured. Otherwise unlocks and force-selects it, and locks the player into build mode until it's placed — Shift can't cancel out and scroll can't cycle to anything else (see Update/TryPlace).</summary>
     public void EnsureFoodBuildingPlaced()
     {
@@ -150,6 +169,14 @@ public class BuildModeController : MonoBehaviour
         IsForced = true;
         IsActive = true;
         SetGhostVisible(true);
+    }
+
+    /// <summary>Re-instantiates the Food Building at position at no resource cost, bypassing normal placement validity checks — called by DayStormCycle at the start of a new day when FoodBuilding.PendingRebuildPosition shows trash destroyed it overnight.</summary>
+    public void RebuildFoodBuildingAt(Vector3 position)
+    {
+        if (foodHoldingBuildable == null) return;
+
+        Instantiate(foodHoldingBuildable.gameObject, position, Quaternion.identity);
     }
 
     private void Update()
@@ -217,11 +244,13 @@ public class BuildModeController : MonoBehaviour
         // TextMesh doesn't repoint its renderer's material when you assign a
         // custom Font via script — without this the glyphs are there but
         // invisible, still rendering with the default font's material/texture.
-        if (costTextFont != null)
-        {
-            text.font = costTextFont;
-            textObject.GetComponent<MeshRenderer>().material = costTextFont.material;
-        }
+        // Also, TextMesh's own implicit default font isn't a dynamic font, so
+        // the fontSize/fontStyle overrides above log "only supported for
+        // dynamic fonts" unless a dynamic font (custom or this built-in
+        // fallback) is explicitly assigned.
+        Font font = costTextFont != null ? costTextFont : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        text.font = font;
+        textObject.GetComponent<MeshRenderer>().material = font.material;
 
         text.color = color;
         text.text = "0";
@@ -328,7 +357,8 @@ public class BuildModeController : MonoBehaviour
         }
         else if (mouse.leftButton.wasReleasedThisFrame)
         {
-            if (Vector2.Distance(pressPosition, mouse.position.ReadValue()) <= clickDistanceThreshold)
+            bool wasCameraDrag = CameraController.Instance != null && CameraController.Instance.WasDragging;
+            if (!wasCameraDrag && Vector2.Distance(pressPosition, mouse.position.ReadValue()) <= clickDistanceThreshold)
             {
                 TryPlace();
             }
@@ -345,6 +375,9 @@ public class BuildModeController : MonoBehaviour
         Vector3 cellCenter = sand.GetCellCenterWorld(currentCell);
         if (!IsPlacementValid(currentCell, cellCenter, sand)) return;
         if (!ResourceManager.Instance.TrySpend(selectedBuildable.Cost)) return;
+
+        selectedBuildable.RegisterPlacement();
+        RefreshCostText();
 
         GameObject instance = Instantiate(selectedBuildable.gameObject, cellCenter, Quaternion.identity);
 
@@ -364,13 +397,23 @@ public class BuildModeController : MonoBehaviour
         }
     }
 
-    /// <summary>True if a building can be placed on this cell: on land, far enough from the nest, and unoccupied.</summary>
+    /// <summary>True if a building can be placed on this cell: on land, far enough from the nest, unoccupied, and — for a Turtle Bed specifically — under the Max Turtle Beds cap.</summary>
     private bool IsPlacementValid(Vector3Int cell, Vector3 cellCenter, Tilemap sand)
     {
         if (!sand.HasTile(cell)) return false;
         if (!IsFarEnoughFromNest(cell)) return false;
         if (!IsCellClear(cellCenter)) return false;
+        if (IsAtTurtleBedCap()) return false;
         return true;
+    }
+
+    /// <summary>True if the selected buildable is a Turtle Bed and the number already placed has reached Max Turtle Beds.</summary>
+    private bool IsAtTurtleBedCap()
+    {
+        if (selectedBuildable == null) return false;
+        if (selectedBuildable.GetComponent<TurtleBed>() == null) return false;
+
+        return TurtleBed.AllBeds.Count >= maxTurtleBeds;
     }
 
     /// <summary>True if this cell is far enough (in tiles) from the map center, where the nest always sits.</summary>
@@ -384,10 +427,15 @@ public class BuildModeController : MonoBehaviour
         return distance > minDistanceFromNest;
     }
 
-    /// <summary>True if nothing solid (another building, nature, the nest, ...) already occupies this tile.</summary>
-    private bool IsCellClear(Vector3 cellCenter)
+    /// <summary>True if nothing solid (another building, nature, the nest, ...) already occupies this tile. Turtles never block placement, checked by ownership (GetComponentInParent&lt;TurtleAgent&gt;) rather than by layer — a turtle has several colliders across its hierarchy (main body, the small head hitbox used for harvest hits, ...) that don't all necessarily sit on the same layer, and a layer-mask exclusion would silently miss whichever ones don't. OverlapBoxAll (not OverlapBox) is required here since a single overlapping turtle collider would otherwise hide whatever else is also on the tile.</summary>
+    private static bool IsCellClear(Vector3 cellCenter)
     {
-        int mask = turtleLayer >= 0 ? ~(1 << turtleLayer) : ~0;
-        return Physics2D.OverlapBox(cellCenter, Vector2.one * 0.9f, 0f, mask) == null;
+        Collider2D[] hits = Physics2D.OverlapBoxAll(cellCenter, Vector2.one * 0.9f, 0f);
+        foreach (Collider2D hit in hits)
+        {
+            if (hit.GetComponentInParent<TurtleAgent>() == null) return false;
+        }
+
+        return true;
     }
 }

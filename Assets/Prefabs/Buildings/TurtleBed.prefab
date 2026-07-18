@@ -86,7 +86,7 @@ SpriteRenderer:
   m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 0
+  m_SortingOrder: 1
   m_MaskInteraction: 0
   m_Sprite: {fileID: -7143436811715502722, guid: c98100e6a1a31dc4497598c9b9432899, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
@@ -133,6 +133,7 @@ MonoBehaviour:
     amount: 15
   - type: 1
     amount: 5
+  priceIncreasePercentPerPlacement: 100
 --- !u!61 &4973229422435098315
 BoxCollider2D:
   m_ObjectHideFlags: 0

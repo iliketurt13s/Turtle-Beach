@@ -21,6 +21,8 @@ public class TrashSpawner : MonoBehaviour
     [Header("Trash")]
     [Tooltip("Trash prefab variants to choose from at random.")]
     [SerializeField] private GameObject[] trashPrefabs;
+    [Tooltip("How strongly rarer/smaller trash is favored over larger, higher-rated trash (e.g. a Pallet) whenever both are affordable within what's left of the round's budget. 0 = every affordable prefab is equally likely regardless of cost, so a Pallet gets picked exactly as often as a Bottle despite eating far more of the budget per spawn — the old behavior, and why pallets used to dominate. Higher values weight selection by 1/rating^this, so cheaper (smaller) trash is picked far more often and a round tends to produce many small pieces instead of being dominated by a couple of expensive ones.")]
+    [SerializeField, Min(0f)] private float smallTrashBias = 1.5f;
 
     [Header("Clumping")]
     [Tooltip("How many loose clumps the round's trash is split across.")]
@@ -159,15 +161,19 @@ public class TrashSpawner : MonoBehaviour
     private static long SqrDistanceFromCenter(Vector3Int cell) => (long)cell.x * cell.x + (long)cell.y * cell.y;
 
     /// <summary>
-    /// Picks a random prefab whose rating fits within remainingBudget. If
-    /// allowOverBudget is true (first spawn of the round) and nothing fits,
-    /// falls back to the single cheapest prefab so a round can never spawn
-    /// zero trash just because the starting budget is smaller than every
-    /// plastic type's rating.
+    /// Picks a prefab whose rating fits within remainingBudget, weighted by
+    /// 1/rating^smallTrashBias so smaller (lower-rated) trash is favored over
+    /// larger trash rather than every affordable option being equally likely
+    /// (see smallTrashBias). If allowOverBudget is true (first spawn of the
+    /// round) and nothing fits, falls back to the single cheapest prefab so a
+    /// round can never spawn zero trash just because the starting budget is
+    /// smaller than every plastic type's rating.
     /// </summary>
     private GameObject PickAffordablePrefab(float remainingBudget, bool allowOverBudget, System.Random rng)
     {
         List<GameObject> affordable = new List<GameObject>();
+        List<float> weights = new List<float>();
+        float totalWeight = 0f;
         GameObject cheapest = null;
         float cheapestRating = float.MaxValue;
 
@@ -176,7 +182,14 @@ public class TrashSpawner : MonoBehaviour
             if (prefab == null) continue;
 
             float rating = GetRating(prefab);
-            if (rating <= remainingBudget) affordable.Add(prefab);
+            if (rating <= remainingBudget)
+            {
+                float weight = 1f / Mathf.Pow(Mathf.Max(rating, 0.01f), smallTrashBias);
+                affordable.Add(prefab);
+                weights.Add(weight);
+                totalWeight += weight;
+            }
+
             if (rating < cheapestRating)
             {
                 cheapestRating = rating;
@@ -184,8 +197,24 @@ public class TrashSpawner : MonoBehaviour
             }
         }
 
-        if (affordable.Count > 0) return affordable[rng.Next(affordable.Count)];
+        if (affordable.Count > 0) return PickWeighted(affordable, weights, totalWeight, rng);
         return allowOverBudget ? cheapest : null;
+    }
+
+    /// <summary>Weighted random pick over options/weights (parallel lists) — falls back to a plain uniform pick if every weight collapsed to 0 (shouldn't happen with a positive rating and the Mathf.Max floor above, but guards against a degenerate weight configuration regardless).</summary>
+    private static GameObject PickWeighted(List<GameObject> options, List<float> weights, float totalWeight, System.Random rng)
+    {
+        if (totalWeight <= 0f) return options[rng.Next(options.Count)];
+
+        float roll = (float)(rng.NextDouble() * totalWeight);
+        float cumulative = 0f;
+        for (int i = 0; i < options.Count; i++)
+        {
+            cumulative += weights[i];
+            if (roll < cumulative) return options[i];
+        }
+
+        return options[options.Count - 1];
     }
 
     private static float GetRating(GameObject prefab)

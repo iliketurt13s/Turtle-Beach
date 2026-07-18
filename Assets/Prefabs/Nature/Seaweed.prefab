@@ -213,9 +213,10 @@ GameObject:
   - component: {fileID: 3629743692228465486}
   - component: {fileID: 3432459604863270084}
   - component: {fileID: 6112323557221419091}
+  - component: {fileID: -8500025001924482020}
   m_Layer: 0
   m_Name: Seaweed
-  m_TagString: Untagged
+  m_TagString: food
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -250,7 +251,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ResourceNode
   resourceType: 2
   hitsToDeplete: 6
-  respawnDuration: 20
+  respawnDuration: 60
   visual: {fileID: 4295024250809901447}
   dropPrefab: {fileID: 0}
   dropSpawnRadius: 0.5
@@ -316,4 +317,16 @@ CircleCollider2D:
   m_CompositeOperation: 0
   m_CompositeOrder: 0
   m_Offset: {x: 0, y: 0}
-  m_Radius: 0.4
+  m_Radius: 0.3
+--- !u!114 &-8500025001924482020
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8331105540512433779}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b8f2c19eaa6a534495b8eafba9130cd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ResourceClickTarget

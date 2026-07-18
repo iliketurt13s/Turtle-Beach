@@ -18,8 +18,8 @@ GameObject:
   - component: {fileID: 2711342369708134352}
   - component: {fileID: 8569562344339093852}
   m_Layer: 0
-  m_Name: Bocs
-  m_TagString: Untagged
+  m_Name: Box
+  m_TagString: trash
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -176,7 +176,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TrashAgent
   burstInterval: 1.5
   burstIntervalVariance: 0.25
-  impulseForce: 5
+  impulseForce: 7
   directionRandomness: 30
   momentumRampDuration: 1
   startingSpeedMultiplier: 0.3

@@ -113,6 +113,7 @@ MonoBehaviour:
   maxHealth: 20
   damagePerHit: 1
   healthBar: {fileID: 1079949754889772256}
+  isInteractable: 0
 --- !u!114 &3869808242819294712
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -131,6 +132,7 @@ MonoBehaviour:
     amount: 10
   - type: 1
     amount: 10
+  priceIncreasePercentPerPlacement: 0
 --- !u!61 &3090179119303666456
 BoxCollider2D:
   m_ObjectHideFlags: 0

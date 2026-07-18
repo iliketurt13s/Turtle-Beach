@@ -1,0 +1,54 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &4715064627800054586
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 520348471558075549}
+  - component: {fileID: 3874395456305664618}
+  m_Layer: 0
+  m_Name: 2SandPileImprovementCard
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &520348471558075549
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4715064627800054586}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &3874395456305664618
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4715064627800054586}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e04f6a0c57e62fd429ece6484ce4275a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SandPileCostAndDamageUpgradeCard
+  displayName: Sharp Sand
+  icon: {fileID: -7488461456543995144, guid: 8e36ad52492607a4d927f8d74e0e2775, type: 3}
+  description: Sand piles now also deal damage to trash in contact. Future sand piles
+    will cost more resources.
+  stackable: 0
+  requiredBuilding: {fileID: 7576401011126260485, guid: d1bcc81195d9be64e8245ded9d663e2d, type: 3}
+  costMultiplier: 2
+  dotDamagePerTick: 1

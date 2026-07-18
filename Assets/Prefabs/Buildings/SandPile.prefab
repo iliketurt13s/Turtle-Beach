@@ -125,6 +125,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SandPile
   dampingIncrease: 5
+  durationBeforeDestroyed: 20
 --- !u!50 &2919316187676218601
 Rigidbody2D:
   serializedVersion: 5
@@ -214,3 +215,4 @@ MonoBehaviour:
   cost:
   - type: 1
     amount: 5
+  priceIncreasePercentPerPlacement: 0

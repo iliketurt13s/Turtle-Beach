@@ -790,19 +790,31 @@ MonoBehaviour:
   - {fileID: 504031918181154049, guid: fec35830372988741bc126e7be2857d7, type: 3}
   - {fileID: 7177774429551187078, guid: ee21641573ee4994cb0abcd4d483f7b0, type: 3}
   - {fileID: 8084820826745788810, guid: fb370357a049ed74e938b9e39a7903e8, type: 3}
-  - {fileID: 1029634730064356670, guid: d8cb673f7c1c8e54eba34e60124fc1ab, type: 3}
   - {fileID: 2245723757331510981, guid: 030d5f9d8b754864cad4e2e1a9ccf428, type: 3}
   - {fileID: 633555157154058015, guid: 0210e544472ecd442b0260c01fe81979, type: 3}
   - {fileID: 1884665784510797264, guid: 736382dbac415aa4e89336cf918490a8, type: 3}
   - {fileID: 8289918803704233111, guid: 2f04097f92a5365498ec58acec650fa1, type: 3}
   - {fileID: 8634205390221016085, guid: 40425f0a149648e46b2b42842eec2e38, type: 3}
   - {fileID: 2938579775652264173, guid: 7d8d5ebc826da5b4988f497a559c10ce, type: 3}
+  - {fileID: 1100012705534710964, guid: 83ef69ece889ebd4298b702ae387cda2, type: 3}
+  - {fileID: 8668818678551580399, guid: 4e147aa78ca59924a8946501b1b0411a, type: 3}
+  - {fileID: 2108959495479186115, guid: f91eb1ff179314e428e42579dc12bcb4, type: 3}
+  - {fileID: 4481752961852276391, guid: 10af019239a4db7439051b28834071fe, type: 3}
+  - {fileID: 815847223186373106, guid: dbe8aba91b5eb4640a02e87ffa5164c1, type: 3}
+  - {fileID: 7543313078467810938, guid: 2ba0c8a8cd664c64a92f2f2aeabb4c84, type: 3}
+  - {fileID: 8733777364129780115, guid: 2c4396f5564c6fe49afbf1a84e78c736, type: 3}
+  - {fileID: 6368929951047295203, guid: 2ab85e9a022d2e7419f77168aed0c0c8, type: 3}
+  - {fileID: 1418597585372403747, guid: 56dfa1b04a64c524584b5849ccc03a58, type: 3}
+  - {fileID: 3874395456305664618, guid: a955893c4fb7db749937540cc7a080ab, type: 3}
+  - {fileID: 6562668390555834330, guid: 1f885f863d4a3db4ca0782adf07d725c, type: 3}
+  - {fileID: 4641069884365941926, guid: 1e1ed39401a8f5743b6483a1f1eff75f, type: 3}
   root: {fileID: 506704384}
   backdrop: {fileID: 506704387}
   descriptionText: {fileID: 519485938}
   cardSlots:
   - {fileID: 2144602841}
   - {fileID: 1097767497}
+  backdropFadeDuration: 1
 --- !u!224 &506704386
 RectTransform:
   m_ObjectHideFlags: 0
@@ -838,15 +850,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
-  m_Color: {r: 0, g: 0, b: 0, a: 0.5921569}
+  m_Color: {r: 0, g: 0, b: 0, a: 0.4509804}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 10907, guid: 0000000000000000f000000000000000, type: 0}
-  m_Type: 1
+  m_Sprite: {fileID: 7482667652216324306, guid: 311925a002f4447b3a28927169b83ea6, type: 3}
+  m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
   m_FillMethod: 4
@@ -1019,6 +1031,7 @@ MonoBehaviour:
   minZoom: 2
   maxZoom: 100
   dragSpeed: 5
+  dragDistanceThreshold: 8
   islandGenerator: {fileID: 1635705031}
 --- !u!114 &519420034
 MonoBehaviour:
@@ -1044,7 +1057,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b183034d2f722144d98fa787c2cbf3b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TurtleSelectionController
-  clickDistanceThreshold: 6
+  clickDistanceThreshold: 100
+  clickParticlePrefab: {fileID: 2433313310848167852, guid: 1b29c8495dd04ab4f9633ad4d4126711, type: 3}
+  clickParticleColor: {r: 1, g: 1, b: 1, a: 1}
 --- !u!1 &519444493
 GameObject:
   m_ObjectHideFlags: 0
@@ -2483,10 +2498,10 @@ MonoBehaviour:
   targetLandFraction: 0.2
   edgeWaterMargin: 2
   blobCount: 3
-  blobMinRadius: 5
+  blobMinRadius: 7
   blobMaxRadius: 9
   blobChainOverlap: 0.6
-  crescentChance: 0.15
+  crescentChance: 0.5
   crescentBiteRadiusFactor: 0.7
   crescentBiteOffsetFactor: 0.55
   centerLandGuaranteeRadius: 2
@@ -2550,12 +2565,12 @@ MonoBehaviour:
   natureObjects:
   - {fileID: 7807885545022674870, guid: 1385be562f927ce47bb40498ad88af15, type: 3}
   - {fileID: 6796091774791622715, guid: a5b8040f6eebb48408f448cb32647984, type: 3}
-  resourceDensity: 0.15
+  resourceDensity: 0.1
   propsParent: {fileID: 758128464}
   positionJitter: 0
   randomizeFlip: 1
   minDistanceFromWater: 1
-  minDistanceFromCenter: 1
+  minDistanceFromCenter: 2
   seed: 0
   useFixedSeed: 0
 --- !u!114 &1635705035
@@ -2585,7 +2600,7 @@ MonoBehaviour:
   ghostAlpha: 0.5
   invalidColor: {r: 1, g: 0.25, b: 0.25, a: 1}
   costTextVerticalOffset: 0.5
-  costTextHorizontalSpacing: 0.25
+  costTextHorizontalSpacing: 0.325
   costTextFontSize: 3
   costTextBold: 0
   costTextFont: {fileID: 12800000, guid: 652f7165b7c30ab46af6c4aad90a639b, type: 2}
@@ -2593,6 +2608,7 @@ MonoBehaviour:
   rockCostColor: {r: 0.3, g: 0.3, b: 0.3, a: 1}
   clickDistanceThreshold: 6
   minDistanceFromNest: 0
+  maxTurtleBeds: 6
 --- !u!114 &1635705036
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2610,6 +2626,7 @@ MonoBehaviour:
   - {fileID: 3912190900667989718, guid: ee540070de125b54fa260853c132fe92, type: 3}
   - {fileID: 8325373002651838158, guid: 633700122dc808440bb02f426cd32967, type: 3}
   - {fileID: 925840000698653082, guid: 8fbe21e27dd1a3f43b92e5da8bd33a14, type: 3}
+  smallTrashBias: 1.5
   clusterCount: 3
   clusterRadius: 5
   positionJitter: 0.35
@@ -2630,12 +2647,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DayStormCycle
   islandGenerator: {fileID: 1635705031}
   trashSpawner: {fileID: 1635705036}
-  jellyfishSpawner: {fileID: 0}
   upgradeSelectionUI: {fileID: 506704385}
   dayDuration: 60
   fadeOutDuration: 2
-  baseRatingBudget: 6
-  ratingGrowthPerRound: 1.25
+  baseRatingBudget: 3
+  ratingGrowthPerRound: 1.3
 --- !u!114 &1635705038
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2692,6 +2708,8 @@ MonoBehaviour:
   islandGenerator: {fileID: 1635705031}
   jellyfishPrefab: {fileID: 2018333655940181433, guid: 67848adafa10e2e4da9d1864e898a094, type: 3}
   maxJellyfishOnMap: 3
+  rollInterval: 5
+  rollIntervalVariance: 2
 --- !u!1 &2079540853
 GameObject:
   m_ObjectHideFlags: 0
@@ -2702,6 +2720,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2079540854}
   - component: {fileID: 2079540855}
+  - component: {fileID: 2079540856}
   m_Layer: 0
   m_Name: CellInidcator
   m_TagString: Untagged
@@ -2739,9 +2758,22 @@ MonoBehaviour:
   islandGenerator: {fileID: 1635705031}
   turtleSelectionController: {fileID: 519420035}
   indicatorSprite: {fileID: -1176397740343331737, guid: fec844b5062f3324caf2d5dda6183e6d, type: 3}
-  sandColor: {r: 1, g: 1, b: 1, a: 1}
-  waterColor: {r: 1, g: 0, b: 0.11172044, a: 1}
-  occupiedColor: {r: 1, g: 0.7147683, b: 0.19999999, a: 1}
+--- !u!114 &2079540856
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2079540853}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 665b2deddcf241deb0a1d18972f85a2a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HoverTargetOutline
+  turtleSelectionController: {fileID: 519420035}
+  outlineColor: {r: 1, g: 1, b: 1, a: 0.9}
+  outlineScale: 1.2
+  hoverTintColor: {r: 1, g: 0.85, b: 0.35, a: 1}
 --- !u!1 &2130351971
 GameObject:
   m_ObjectHideFlags: 0

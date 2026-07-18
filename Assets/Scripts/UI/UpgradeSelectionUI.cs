@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -11,6 +12,18 @@ using UnityEngine.UI;
 /// Other systems (BuildModeController, TurtleSelectionController,
 /// CameraController) poll the static IsActive flag to stand down while this
 /// is up, the same way they already stand down for BuildModeController.IsActive.
+///
+/// The backdrop doubles as storm visual feedback: DayStormCycle calls
+/// BeginStormFadeIn the instant a storm starts, well before the actual card
+/// choice is shown, so the darkening reads as "it's night" rather than only
+/// appearing alongside the upgrade cards. It fades in to whatever alpha the
+/// backdrop Image was originally authored with (captured once at Awake, then
+/// forced to 0 until the first fade-in — so no new designer-facing field is
+/// needed, the existing Image color is still the one source of truth for how
+/// dark it gets). Cards themselves still only appear once Show() is called at
+/// the actual end of the storm; the darkening alone spans the whole night.
+/// Select() fades the backdrop back out (smoothing the return to gameplay)
+/// rather than snapping it away instantly.
 /// </summary>
 public class UpgradeSelectionUI : MonoBehaviour
 {
@@ -20,7 +33,7 @@ public class UpgradeSelectionUI : MonoBehaviour
     [SerializeField] private UpgradeCardDefinition[] upgradePool;
 
     [Header("UI References")]
-    [Tooltip("Root object for the whole choice UI (backdrop + cards), toggled active/inactive by Show/Select.")]
+    [Tooltip("Root object for the whole choice UI (backdrop + cards), toggled active/inactive by BeginStormFadeIn/Select.")]
     [SerializeField] private GameObject root;
     [SerializeField] private Image backdrop;
     [Tooltip("Bottom-center text shown while hovering a card's icon.")]
@@ -28,14 +41,34 @@ public class UpgradeSelectionUI : MonoBehaviour
     [Tooltip("The card view slots shown to the player (2 expected).")]
     [SerializeField] private UpgradeCardView[] cardSlots;
 
+    [Header("Storm Backdrop Fade")]
+    [Tooltip("How long the backdrop takes to fade fully in (storm start) or out (upgrade picked).")]
+    [SerializeField] private float backdropFadeDuration = 1f;
+
     private readonly HashSet<UpgradeCardDefinition> pickedNonStackable = new HashSet<UpgradeCardDefinition>();
     private Action pendingOnComplete;
+    private float backdropTargetAlpha;
+    private Coroutine backdropFadeCoroutine;
 
     private void Awake()
     {
         IsActive = false;
         if (root != null) root.SetActive(false);
+        if (backdrop != null)
+        {
+            backdropTargetAlpha = backdrop.color.a;
+            SetBackdropAlpha(0f);
+        }
         HideDescription();
+    }
+
+    /// <summary>Called by DayStormCycle the instant a storm begins. Fades the backdrop in immediately and hides the (not-yet-populated) card slots, so nothing but the darkening itself is visible until Show() actually reveals cards at the storm's end.</summary>
+    public void BeginStormFadeIn()
+    {
+        if (root != null) root.SetActive(true);
+        HideDescription();
+        SetCardSlotsActive(false);
+        StartBackdropFade(backdropTargetAlpha);
     }
 
     /// <summary>Draws up to 2 distinct eligible cards and shows the choice UI. Calls onComplete immediately if no cards are eligible.</summary>
@@ -48,12 +81,29 @@ public class UpgradeSelectionUI : MonoBehaviour
             {
                 if (card == null) continue;
                 if (!card.Stackable && pickedNonStackable.Contains(card)) continue;
+
+                // Building-branch cards (see IRequiresBuilding) only enter the
+                // draw pool once their required building is unlocked — e.g. a
+                // Campfire upgrade shouldn't show up before the Campfire
+                // itself does. Treated as ineligible (not just deprioritized)
+                // if BuildModeController isn't around to check.
+                if (card is IRequiresBuilding requiresBuilding
+                    && (BuildModeController.Instance == null || !BuildModeController.Instance.IsUnlocked(requiresBuilding.RequiredBuilding)))
+                {
+                    continue;
+                }
+
                 eligible.Add(card);
             }
         }
 
         if (eligible.Count == 0)
         {
+            // Nothing to offer this round — still fade the backdrop back out
+            // (BeginStormFadeIn already faded it in for the storm), or the
+            // screen would stay darkened forever since Select() is what
+            // normally does that and it'll never get called.
+            StartBackdropFade(0f);
             onComplete?.Invoke();
             return;
         }
@@ -71,6 +121,7 @@ public class UpgradeSelectionUI : MonoBehaviour
         IsActive = true;
         if (root != null) root.SetActive(true);
         HideDescription();
+        StartBackdropFade(backdropTargetAlpha); // normally already fully faded in from BeginStormFadeIn; harmless if so, catches Show() being called without it having run
 
         for (int i = 0; i < cardSlots.Length; i++)
         {
@@ -94,7 +145,7 @@ public class UpgradeSelectionUI : MonoBehaviour
         if (descriptionText != null) descriptionText.gameObject.SetActive(false);
     }
 
-    /// <summary>Called by a card's Select button. Applies the card's effect, tears down the UI, and resumes the game.</summary>
+    /// <summary>Called by a card's Select button. Applies the card's effect, hides the cards immediately, resumes the game right away, and fades the backdrop back out over BackdropFadeDuration rather than snapping it away instantly.</summary>
     public void Select(UpgradeCardDefinition card)
     {
         card.Apply();
@@ -102,10 +153,59 @@ public class UpgradeSelectionUI : MonoBehaviour
         if (!card.Stackable) pickedNonStackable.Add(card);
 
         IsActive = false;
-        if (root != null) root.SetActive(false);
+        SetCardSlotsActive(false);
+        HideDescription();
+        StartBackdropFade(0f);
 
         Action callback = pendingOnComplete;
         pendingOnComplete = null;
         callback?.Invoke();
+    }
+
+    private void SetCardSlotsActive(bool active)
+    {
+        if (cardSlots == null) return;
+
+        foreach (UpgradeCardView slot in cardSlots)
+        {
+            if (slot != null) slot.gameObject.SetActive(active);
+        }
+    }
+
+    private void StartBackdropFade(float targetAlpha)
+    {
+        if (backdrop == null) return;
+
+        if (backdropFadeCoroutine != null) StopCoroutine(backdropFadeCoroutine);
+        backdropFadeCoroutine = StartCoroutine(FadeBackdrop(targetAlpha));
+    }
+
+    /// <summary>Fades the backdrop's alpha to targetAlpha over BackdropFadeDuration. Deactivates root once a fade-to-0 finishes (fading in never needs to, root is already active by then), so the UI object doesn't linger fully transparent but still raycast-blocking/rendering.</summary>
+    private IEnumerator FadeBackdrop(float targetAlpha)
+    {
+        float startAlpha = backdrop.color.a;
+        float duration = Mathf.Max(backdropFadeDuration, 0.01f);
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            SetBackdropAlpha(Mathf.Lerp(startAlpha, targetAlpha, elapsed / duration));
+            yield return null;
+        }
+
+        SetBackdropAlpha(targetAlpha);
+        backdropFadeCoroutine = null;
+
+        if (targetAlpha <= 0f && root != null) root.SetActive(false);
+    }
+
+    private void SetBackdropAlpha(float alpha)
+    {
+        if (backdrop == null) return;
+
+        Color color = backdrop.color;
+        color.a = alpha;
+        backdrop.color = color;
     }
 }

@@ -5,7 +5,10 @@ using UnityEngine;
 /// Drives the repeating day/storm cycle: daylight lets the player see and
 /// prepare for the next wave of trash; storm sets TrashAgent instances loose
 /// to burst toward the nest. Each cycle spawns more trash than the last and
-/// heals all buildings back to full once the storm ends.
+/// heals all buildings back to full once the storm ends. The instant a storm
+/// starts, UpgradeSelectionUI's backdrop fades in as "it's night" feedback
+/// (see BeginStormFadeIn) well before its cards actually appear at the
+/// storm's end, and fades back out once a card is picked.
 /// </summary>
 public class DayStormCycle : MonoBehaviour
 {
@@ -18,8 +21,6 @@ public class DayStormCycle : MonoBehaviour
     [Header("References")]
     [SerializeField] private IslandGenerator islandGenerator;
     [SerializeField] private TrashSpawner trashSpawner;
-    [Tooltip("Optional — rolled once per round for a chance to spawn a new Jellyfish in the shallows. Leave unassigned if the Jellyfish upgrade isn't in use.")]
-    [SerializeField] private JellyfishSpawner jellyfishSpawner;
     [Tooltip("Shown at the end of every storm before the next day begins. If left unassigned, the next day begins immediately with no upgrade choice.")]
     [SerializeField] private UpgradeSelectionUI upgradeSelectionUI;
 
@@ -68,11 +69,11 @@ public class DayStormCycle : MonoBehaviour
         {
             phaseTimer -= dayDuration;
             IsStorming = true;
+            upgradeSelectionUI?.BeginStormFadeIn();
         }
         else if (IsStorming && !trashSpawner.AnyTrashAlive())
         {
             phaseTimer = 0f;
-            IsStorming = false;
             trashSpawner.BeginFadeOutAndClear(fadeOutDuration);
             BuildingHealth.HealAll();
             StormEnded?.Invoke();
@@ -85,21 +86,34 @@ public class DayStormCycle : MonoBehaviour
             }
             else
             {
+                IsStorming = false;
                 BeginDay();
             }
         }
     }
 
+    // IsStorming deliberately stays true (see below) for the whole
+    // awaitingUpgradeChoice window rather than flipping the instant trash
+    // clears — TurtleAgent reads it independently every frame, and every
+    // day-only behavior (resuming the target resource objective, harvesting,
+    // resource respawn, etc.) is gated on it, so turtles would otherwise
+    // start moving and collecting again while the player is still looking at
+    // the upgrade cards.
     private void HandleUpgradeChoiceComplete()
     {
         awaitingUpgradeChoice = false;
+        IsStorming = false;
         BeginDay();
     }
 
     private void BeginDay()
     {
+        if (FoodBuilding.PendingRebuildPosition.HasValue && FoodBuilding.Instance == null)
+        {
+            BuildModeController.Instance?.RebuildFoodBuildingAt(FoodBuilding.PendingRebuildPosition.Value);
+        }
+
         float ratingBudget = baseRatingBudget * Mathf.Pow(ratingGrowthPerRound, CurrentRound - 1);
         trashSpawner.SpawnRound(ratingBudget);
-        jellyfishSpawner?.TryRollSpawn();
     }
 }

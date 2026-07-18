@@ -20,9 +20,11 @@ public class SandBall : MonoBehaviour
         rb = GetComponent<Rigidbody2D>();
     }
 
-    /// <summary>Called immediately after Instantiate — sets this ball flying toward targetPosition.</summary>
-    public void Launch(Vector2 targetPosition)
+    /// <summary>Called immediately after Instantiate — sets this ball flying toward targetPosition. bonusDamage adds to this ball's damage once (from Watchtower-branch upgrade cards, see UpgradeManager.WatchtowerDamageBonus), read live by Watchtower at fire time.</summary>
+    public void Launch(Vector2 targetPosition, int bonusDamage = 0)
     {
+        damage += bonusDamage;
+
         Vector2 direction = (targetPosition - rb.position);
         if (direction.sqrMagnitude < 0.0001f) direction = Vector2.right;
         direction.Normalize();

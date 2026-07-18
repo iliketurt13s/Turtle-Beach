@@ -14,9 +14,10 @@ GameObject:
   - component: {fileID: 787971055676145358}
   - component: {fileID: 302970642710727097}
   - component: {fileID: 3587096565976866410}
+  - component: {fileID: -5298900204689769101}
   m_Layer: 0
   m_Name: Jellyfish
-  m_TagString: Untagged
+  m_TagString: food
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -146,7 +147,7 @@ SpriteRenderer:
   m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 0
+  m_SortingOrder: 2
   m_MaskInteraction: 0
   m_Sprite: {fileID: -7893006368488389179, guid: 915a8a83552658e4ea69b814a739c663, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
@@ -187,10 +188,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d4a298707b39699478cdb5de23b91196, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::JellyfishAgent
-  hitsRequired: 3
+  hitsRequired: 10
   wanderRadius: 2
   wanderInterval: 3
   wanderIntervalVariance: 1
   driftSpeed: 0.5
   turnSpeed: 90
   arrivalDistance: 0.1
+--- !u!114 &-5298900204689769101
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2018333655940181433}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b8f2c19eaa6a534495b8eafba9130cd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ResourceClickTarget

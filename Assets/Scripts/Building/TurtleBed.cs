@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -11,6 +12,10 @@ using UnityEngine;
 /// </summary>
 public class TurtleBed : MonoBehaviour
 {
+    /// <summary>Every currently-placed bed, so BuildModeController can enforce Max Turtle Beds (mirrors TurtleAgent.AllTurtles/Coconut.AllCoconuts).</summary>
+    private static readonly List<TurtleBed> allBeds = new List<TurtleBed>();
+    public static IReadOnlyList<TurtleBed> AllBeds => allBeds;
+
     [Tooltip("Seconds after placement before this bed's turtle spawns.")]
     [SerializeField] private float spawnDelayAfterPlacement = 5f;
 
@@ -18,6 +23,9 @@ public class TurtleBed : MonoBehaviour
     private float spawnTimer;
     private bool hasSpawned;
     private GameObject linkedTurtle;
+
+    private void OnEnable() => allBeds.Add(this);
+    private void OnDisable() => allBeds.Remove(this);
 
     /// <summary>Called by whatever placed this bed (see BuildModeController.TryPlace) with the scene's IslandGenerator, since this can't be pre-wired on the prefab asset itself.</summary>
     public void Initialize(IslandGenerator generator)

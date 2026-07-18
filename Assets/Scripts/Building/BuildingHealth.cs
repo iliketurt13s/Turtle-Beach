@@ -16,6 +16,9 @@ public class BuildingHealth : MonoBehaviour
     /// <summary>Every currently-enabled building, so e.g. Iron Ingot can pick one at random.</summary>
     public static IReadOnlyList<BuildingHealth> AllBuildings => allBuildings;
 
+    /// <summary>Raised right before a building is destroyed by reaching zero health, while its GameObject/components are still valid — lets e.g. FoodBuilding notice its own destruction and remember where to rebuild.</summary>
+    public static event Action<BuildingHealth> Destroyed;
+
     [SerializeField] private int maxHealth = 10;
     [SerializeField] private int damagePerHit = 1;
     [SerializeField] private BuildingHealthBar healthBar;
@@ -24,12 +27,38 @@ public class BuildingHealth : MonoBehaviour
 
     public bool IsInteractable => isInteractable;
 
+    /// <summary>Overrides the Inspector-authored value at runtime — e.g. FoodBuilding forces itself non-interactable in code (its feeding is proximity-based, never an explicit player order), so that stays true regardless of what a prefab's checkbox happens to be set to.</summary>
+    public void SetInteractable(bool value) => isInteractable = value;
+
     private int currentHealth;
     private readonly List<Action> pendingBonusRevokers = new List<Action>();
 
+    private BuildableDefinition definition;
+    private int appliedHealthBonus;
+
     private void Awake()
     {
+        definition = GetComponent<BuildableDefinition>();
         currentHealth = maxHealth;
+        if (healthBar != null) healthBar.SetHealth(currentHealth, maxHealth);
+    }
+
+    private void Update()
+    {
+        // Live-applies HealthBonus from a building-branch upgrade card (e.g.
+        // WallHealthUpgradeCard) so it retroactively toughens up already-placed
+        // buildings too, not just future ones — maxHealth is otherwise copied
+        // once per instance at Instantiate time, unlike Campfire's per-frame
+        // live-read stats, so this polls for the delta instead.
+        if (definition == null) return;
+
+        int currentBonus = definition.HealthBonus;
+        if (currentBonus == appliedHealthBonus) return;
+
+        int delta = currentBonus - appliedHealthBonus;
+        appliedHealthBonus = currentBonus;
+        maxHealth += delta;
+        currentHealth += delta;
         if (healthBar != null) healthBar.SetHealth(currentHealth, maxHealth);
     }
 
@@ -54,7 +83,11 @@ public class BuildingHealth : MonoBehaviour
 
         currentHealth -= damagePerHit;
         if (healthBar != null) healthBar.SetHealth(currentHealth, maxHealth);
-        if (currentHealth <= 0) Destroy(gameObject);
+        if (currentHealth <= 0)
+        {
+            Destroyed?.Invoke(this);
+            Destroy(gameObject);
+        }
     }
 
     private void Heal()

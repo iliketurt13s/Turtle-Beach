@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -10,18 +11,27 @@ using UnityEngine;
 /// </summary>
 public class Coconut : MonoBehaviour
 {
+    /// <summary>Every currently-alive coconut, so TurtleAgent can find the nearest one to continue toward after finishing/losing its current target (mirrors JellyfishAgent.AllJellyfish/TrashHealth.allTrash).</summary>
+    private static readonly List<Coconut> allCoconuts = new List<Coconut>();
+    public static IReadOnlyList<Coconut> AllCoconuts => allCoconuts;
+
     [SerializeField] private int hitsRequired = 4;
 
     private int hitsTaken;
 
-    /// <summary>Called by TurtleAgent.HandleHeadHit when a turtle's head touches this coconut.</summary>
-    public void RegisterHit(TurtleAgent attacker)
+    private void OnEnable() => allCoconuts.Add(this);
+    private void OnDisable() => allCoconuts.Remove(this);
+
+    /// <summary>Called by TurtleAgent.HandleHeadHit when a turtle's head touches this coconut. Returns true if this hit was the one that consumed/destroyed it — callers must not rely on a `this == null` check afterward, since Destroy() only takes effect at end of frame, not immediately.</summary>
+    public bool RegisterHit(TurtleAgent attacker)
     {
-        if (attacker == null) return;
+        if (attacker == null) return false;
 
         hitsTaken++;
         attacker.CollectResourceUnit(ResourceManager.ResourceType.Coconut, transform.position);
 
-        if (hitsTaken >= hitsRequired) Destroy(gameObject);
+        bool consumed = hitsTaken >= hitsRequired;
+        if (consumed) Destroy(gameObject);
+        return consumed;
     }
 }

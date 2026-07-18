@@ -213,9 +213,10 @@ GameObject:
   - component: {fileID: 1028364560229132668}
   - component: {fileID: 895813652663476633}
   - component: {fileID: 2613320257948325774}
+  - component: {fileID: 7381766053685625301}
   m_Layer: 0
   m_Name: PalmTree
-  m_TagString: Untagged
+  m_TagString: food
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -250,7 +251,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ResourceNode
   resourceType: 0
   hitsToDeplete: 15
-  respawnDuration: 20
+  respawnDuration: 60
   visual: {fileID: 1250760984299299739}
   dropPrefab: {fileID: 6672249223088103235, guid: f70e1e0a8481e9344b79c5a17219bafa, type: 3}
   dropSpawnRadius: 0.5
@@ -317,3 +318,15 @@ CircleCollider2D:
   m_CompositeOrder: 0
   m_Offset: {x: 0, y: 0.10984284}
   m_Radius: 0.30984288
+--- !u!114 &7381766053685625301
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7807885545022674870}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b8f2c19eaa6a534495b8eafba9130cd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ResourceClickTarget

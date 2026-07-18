@@ -4,6 +4,9 @@ using UnityEngine.InputSystem;
 [RequireComponent(typeof(Camera))]
 public class CameraController : MonoBehaviour
 {
+    /// <summary>Scene-wide singleton (mirrors BuildModeController/PathfindingManager/etc.) so TurtleSelectionController/BuildModeController can check WasDragging without a dedicated Inspector-wired reference.</summary>
+    public static CameraController Instance { get; private set; }
+
     [Header("Zoom")]
     [SerializeField] private float zoomSpeed = 5f;
     [SerializeField] private float minZoom = 2f;
@@ -11,18 +14,37 @@ public class CameraController : MonoBehaviour
 
     [Header("Drag")]
     [SerializeField] private float dragSpeed = 1f;
+    [Tooltip("Cumulative screen-pixel distance the mouse must travel while the left button is held before a release counts as a camera drag rather than a click — see WasDragging. Distinct from TurtleSelectionController/BuildModeController's own click-distance threshold, which only measures net press-to-release displacement and would otherwise misread a drag that happens to end back near its start (e.g. a small correction while panning/zooming) as a click-to-order.")]
+    [SerializeField] private float dragDistanceThreshold = 6f;
 
     [Header("Map Bounds")]
     [Tooltip("Generator whose map size caps how far the camera can zoom out or pan, so it can never see past the grid's edge into empty space.")]
     [SerializeField] private IslandGenerator islandGenerator;
 
+    /// <summary>True if the mouse has moved at least DragDistanceThreshold (cumulative since the left button was last pressed, not just net displacement) — checked by TurtleSelectionController/BuildModeController so a pan/zoom gesture is never misread as a click-to-order or a building placement just because it happened to release near its own start point.</summary>
+    public bool WasDragging { get; private set; }
+
     private Camera cam;
     private Vector2 lastMousePosition;
     private bool isDragging;
+    private float cumulativeDragDistance;
 
     private void Awake()
     {
+        if (Instance != null && Instance != this)
+        {
+            Debug.LogWarning("CameraController: duplicate instance in scene, destroying this one.");
+            Destroy(gameObject);
+            return;
+        }
+
+        Instance = this;
         cam = GetComponent<Camera>();
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
     }
 
     private void Update()
@@ -63,6 +85,8 @@ public class CameraController : MonoBehaviour
         {
             isDragging = true;
             lastMousePosition = mouse.position.ReadValue();
+            cumulativeDragDistance = 0f;
+            WasDragging = false;
         }
         else if (mouse.leftButton.wasReleasedThisFrame)
         {
@@ -74,6 +98,13 @@ public class CameraController : MonoBehaviour
         Vector2 currentMousePosition = mouse.position.ReadValue();
         Vector2 delta = currentMousePosition - lastMousePosition;
         lastMousePosition = currentMousePosition;
+
+        // Cumulative, not net press-to-release displacement — so a pan that
+        // wanders and happens to end back near its start still counts as a
+        // drag (see WasDragging) rather than snapping back to reading as a
+        // plain click the instant the button comes up.
+        cumulativeDragDistance += delta.magnitude;
+        if (cumulativeDragDistance >= dragDistanceThreshold) WasDragging = true;
 
         Vector3 move = new Vector3(-delta.x, -delta.y, 0f) * (dragSpeed * Time.unscaledDeltaTime);
         transform.position += move;

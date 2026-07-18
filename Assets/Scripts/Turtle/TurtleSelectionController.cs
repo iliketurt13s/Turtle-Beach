@@ -9,13 +9,26 @@ using UnityEngine.InputSystem;
 /// Right-click deselects without issuing an order. Runs independently of
 /// CameraController's left-click-drag camera pan (both simply poll
 /// Mouse.current each frame); a press/release distance threshold keeps a
-/// deliberate pan-drag from also issuing a stray order.
+/// deliberate pan-drag from also issuing a stray order — but that threshold
+/// alone only measures net displacement, so a pan/zoom gesture that wanders
+/// and happens to release back near where it started (easy to do while
+/// scrolling to zoom mid-drag) would otherwise still slip through and read as
+/// a click, sending the selected turtle wherever the camera ended up panning
+/// to. CameraController.WasDragging (cumulative movement while held, not just
+/// net displacement) is checked too, so any real drag suppresses the order
+/// regardless of where it happened to end.
 /// </summary>
 public class TurtleSelectionController : MonoBehaviour
 {
     [Header("Click Detection")]
     [Tooltip("Max screen-pixel distance between press and release to count as a click rather than a drag.")]
     [SerializeField] private float clickDistanceThreshold = 6f;
+
+    [Header("Click Feedback")]
+    [Tooltip("Spawned at the clicked world point on every genuine click this controller handles (turtle select, resource/building order, ground move). Left unassigned = no effect. Never fires for a build-mode placement click, since those are handled entirely by BuildModeController instead.")]
+    [SerializeField] private ParticleSystem clickParticlePrefab;
+    [Tooltip("Tint applied to every spawned click particle instance's start color.")]
+    [SerializeField] private Color clickParticleColor = Color.white;
 
     /// <summary>True while a turtle is currently selected, e.g. for CellIndicator to know whether to show.</summary>
     public bool HasSelection => selectedTurtle != null;
@@ -43,7 +56,8 @@ public class TurtleSelectionController : MonoBehaviour
         else if (mouse.leftButton.wasReleasedThisFrame)
         {
             Vector2 releasePosition = mouse.position.ReadValue();
-            if (Vector2.Distance(pressPosition, releasePosition) <= clickDistanceThreshold)
+            bool wasCameraDrag = CameraController.Instance != null && CameraController.Instance.WasDragging;
+            if (!wasCameraDrag && Vector2.Distance(pressPosition, releasePosition) <= clickDistanceThreshold)
             {
                 HandleClick(releasePosition);
             }
@@ -62,6 +76,8 @@ public class TurtleSelectionController : MonoBehaviour
         Vector3 worldPoint = cam.ScreenToWorldPoint(screenPosition);
         worldPoint.z = 0f;
 
+        SpawnClickParticle(worldPoint);
+
         Collider2D hit = Physics2D.OverlapPoint(worldPoint);
 
         TurtleAgent clickedTurtle = hit != null ? hit.GetComponentInParent<TurtleAgent>() : null;
@@ -73,26 +89,17 @@ public class TurtleSelectionController : MonoBehaviour
 
         if (selectedTurtle == null) return;
 
-        ResourceNode clickedResource = hit != null ? hit.GetComponentInParent<ResourceNode>() : null;
-        Coconut clickedCoconut = hit != null ? hit.GetComponentInParent<Coconut>() : null;
-        JellyfishAgent clickedJellyfish = hit != null ? hit.GetComponentInParent<JellyfishAgent>() : null;
+        // Resources are hit-tested against their actual rendered sprite bounds
+        // (see ResourceClickTarget), not the small gameplay collider a click
+        // would otherwise need to land on — e.g. a palm tree's canopy is much
+        // bigger than its trunk collider. Falls back to the collider-based
+        // BuildingHealth/ground-move resolution below only if no resource matched.
+        Transform clickedResource = ResourceClickTarget.FindClickTargetAt(worldPoint);
         BuildingHealth clickedBuilding = hit != null ? hit.GetComponentInParent<BuildingHealth>() : null;
 
         if (clickedResource != null)
         {
-            selectedTurtle.MoveToResource(clickedResource.transform);
-        }
-        else if (clickedCoconut != null)
-        {
-            // Coconut has no BuildingHealth, so the bouncy resource-approach
-            // behavior is correct here, not MoveToBuilding's layer-swap logic.
-            selectedTurtle.MoveToResource(clickedCoconut.transform);
-        }
-        else if (clickedJellyfish != null)
-        {
-            // Same reasoning as Coconut above — no BuildingHealth, so this is
-            // a resource-approach target, not a MoveToBuilding one.
-            selectedTurtle.MoveToResource(clickedJellyfish.transform);
+            selectedTurtle.MoveToResource(clickedResource);
         }
         else if (clickedBuilding != null && clickedBuilding.IsInteractable)
         {
@@ -104,6 +111,15 @@ public class TurtleSelectionController : MonoBehaviour
         }
 
         DeselectCurrent();
+    }
+
+    private void SpawnClickParticle(Vector3 worldPoint)
+    {
+        if (clickParticlePrefab == null) return;
+
+        ParticleSystem instance = Instantiate(clickParticlePrefab, worldPoint, Quaternion.identity);
+        ParticleSystem.MainModule main = instance.main;
+        main.startColor = clickParticleColor;
     }
 
     private void Select(TurtleAgent turtle)

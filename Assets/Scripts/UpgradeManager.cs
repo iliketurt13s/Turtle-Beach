@@ -23,6 +23,36 @@ public class UpgradeManager : MonoBehaviour
     public float IronIngotSpawnChance { get; private set; } = 0f;
     public float JellyfishSpawnChance { get; private set; } = 0f;
 
+    /// <summary>Cumulative bonus added to every Campfire's own speed bonus, from Campfire-branch upgrade cards (see CampfireSpeedBonusUpgradeCard). Read live by Campfire rather than pushed to instances, so it applies to already-placed and future Campfires alike.</summary>
+    public float CampfireSpeedBonus { get; private set; } = 0f;
+
+    /// <summary>Cumulative bonus added to every Campfire's range, from CampfireRangeUpgradeCard. Read live by Campfire.EffectiveRange.</summary>
+    public float CampfireRangeBonus { get; private set; } = 0f;
+
+    /// <summary>Cumulative bonus added to every Fertilizer's range, from FertilizerRangeUpgradeCard. Read live by ResourceRespawnBooster instances configured as Fertilizer.</summary>
+    public float FertilizerRangeBonus { get; private set; } = 0f;
+
+    /// <summary>Cumulative bonus added to every Fertilizer's respawn speed bonus, from FertilizerRespawnUpgradeCard. Read live by ResourceRespawnBooster instances configured as Fertilizer.</summary>
+    public float FertilizerRespawnBonus { get; private set; } = 0f;
+
+    /// <summary>Cumulative bonus added to every Pet Rock's range, from PetRockRangeUpgradeCard. Read live by ResourceRespawnBooster instances configured as Pet Rock.</summary>
+    public float PetRockRangeBonus { get; private set; } = 0f;
+
+    /// <summary>Cumulative bonus added to every Pet Rock's respawn speed bonus, from PetRockRespawnUpgradeCard. Read live by ResourceRespawnBooster instances configured as Pet Rock.</summary>
+    public float PetRockRespawnBonus { get; private set; } = 0f;
+
+    /// <summary>Cumulative bonus added to every Sand Pile's damping increase (slow strength), from SandPileSlowUpgradeCard. Read live by SandPile.EffectiveDampingIncrease.</summary>
+    public float SandPileDampingBonus { get; private set; } = 0f;
+
+    /// <summary>Damage every Sand Pile deals per tick to trash trapped on it, from SandPileCostAndDamageUpgradeCard. Zero (the default) means no Sand Pile deals damage-over-time yet. Read live by SandPile.</summary>
+    public int SandPileDotDamagePerTick { get; private set; } = 0;
+
+    /// <summary>Cumulative fractional bonus to every Watchtower's fire rate, from WatchtowerFireRateUpgradeCard, e.g. 0.2 = 20% faster. Read live by Watchtower.EffectiveFireInterval.</summary>
+    public float WatchtowerFireRateBonus { get; private set; } = 0f;
+
+    /// <summary>Cumulative bonus damage added to every Watchtower's SandBall shots, from WatchtowerDamageUpgradeCard. Read live by Watchtower when firing.</summary>
+    public int WatchtowerDamageBonus { get; private set; } = 0;
+
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -81,6 +111,66 @@ public class UpgradeManager : MonoBehaviour
     {
         JellyfishSpawnChance = Mathf.Clamp01(JellyfishSpawnChance + amount);
         Debug.Log($"UpgradeManager: Jellyfish spawn chance now {JellyfishSpawnChance:P0}");
+    }
+
+    public void AddCampfireSpeedBonus(float amount)
+    {
+        CampfireSpeedBonus += amount;
+        Debug.Log($"UpgradeManager: Campfire speed bonus now +{CampfireSpeedBonus:P0}");
+    }
+
+    public void AddCampfireRangeBonus(float amount)
+    {
+        CampfireRangeBonus += amount;
+        Debug.Log($"UpgradeManager: Campfire range bonus now +{CampfireRangeBonus:F1}");
+    }
+
+    public void AddFertilizerRangeBonus(float amount)
+    {
+        FertilizerRangeBonus += amount;
+        Debug.Log($"UpgradeManager: Fertilizer range bonus now +{FertilizerRangeBonus:F1}");
+    }
+
+    public void AddFertilizerRespawnBonus(float amount)
+    {
+        FertilizerRespawnBonus += amount;
+        Debug.Log($"UpgradeManager: Fertilizer respawn speed bonus now +{FertilizerRespawnBonus:P0}");
+    }
+
+    public void AddPetRockRangeBonus(float amount)
+    {
+        PetRockRangeBonus += amount;
+        Debug.Log($"UpgradeManager: Pet Rock range bonus now +{PetRockRangeBonus:F1}");
+    }
+
+    public void AddPetRockRespawnBonus(float amount)
+    {
+        PetRockRespawnBonus += amount;
+        Debug.Log($"UpgradeManager: Pet Rock respawn speed bonus now +{PetRockRespawnBonus:P0}");
+    }
+
+    public void AddSandPileDampingBonus(float amount)
+    {
+        SandPileDampingBonus += amount;
+        Debug.Log($"UpgradeManager: Sand Pile damping bonus now +{SandPileDampingBonus:F1}");
+    }
+
+    public void AddSandPileDotDamagePerTick(int amount)
+    {
+        SandPileDotDamagePerTick += amount;
+        Debug.Log($"UpgradeManager: Sand Pile damage-over-time now {SandPileDotDamagePerTick}/tick");
+    }
+
+    public void AddWatchtowerFireRateBonus(float amount)
+    {
+        WatchtowerFireRateBonus += amount;
+        Debug.Log($"UpgradeManager: Watchtower fire rate bonus now +{WatchtowerFireRateBonus:P0}");
+    }
+
+    public void AddWatchtowerDamageBonus(int amount)
+    {
+        WatchtowerDamageBonus += amount;
+        Debug.Log($"UpgradeManager: Watchtower damage bonus now +{WatchtowerDamageBonus}");
     }
 
     /// <summary>Called once by a freshly spawned turtle to catch up to whatever's already been picked this run.</summary>

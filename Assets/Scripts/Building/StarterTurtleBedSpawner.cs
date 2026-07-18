@@ -13,13 +13,6 @@ public class StarterTurtleBedSpawner : MonoBehaviour
     [Tooltip("Distance from the nest the starting Turtle Bed spawns at, in a random direction.")]
     [SerializeField] private float spawnDistance = 5f;
 
-    private int turtleLayer;
-
-    private void Awake()
-    {
-        turtleLayer = LayerMask.NameToLayer("Turtle");
-    }
-
     private void OnEnable()
     {
         if (islandGenerator != null) islandGenerator.IslandGenerated += SpawnStarterBed;
@@ -60,10 +53,15 @@ public class StarterTurtleBedSpawner : MonoBehaviour
         Debug.LogWarning("StarterTurtleBedSpawner: couldn't find a valid spot for the starting Turtle Bed after multiple attempts.");
     }
 
-    /// <summary>True if nothing solid (nature, another building, the nest, ...) already occupies this tile.</summary>
-    private bool IsCellClear(Vector3 cellCenter)
+    /// <summary>True if nothing solid (nature, another building, the nest, ...) already occupies this tile. Turtles never block placement, checked by ownership rather than by layer — see BuildModeController.IsCellClear for why.</summary>
+    private static bool IsCellClear(Vector3 cellCenter)
     {
-        int mask = turtleLayer >= 0 ? ~(1 << turtleLayer) : ~0;
-        return Physics2D.OverlapBox(cellCenter, Vector2.one * 0.9f, 0f, mask) == null;
+        Collider2D[] hits = Physics2D.OverlapBoxAll(cellCenter, Vector2.one * 0.9f, 0f);
+        foreach (Collider2D hit in hits)
+        {
+            if (hit.GetComponentInParent<TurtleAgent>() == null) return false;
+        }
+
+        return true;
     }
 }

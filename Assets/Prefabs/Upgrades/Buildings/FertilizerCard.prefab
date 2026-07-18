@@ -46,6 +46,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BuildingUnlockUpgradeCard
   displayName: Fertilizer
   icon: {fileID: 2615251924904324674, guid: b70e768200f7bf64b8f505d05632a845, type: 3}
-  description: Make plants regenerate faster.
+  description: Place around plants to speed up respawn time.
   stackable: 0
   buildableToUnlock: {fileID: 7076788680434553161, guid: 2fccf354ec361114f86a640e6bb25c7f, type: 3}

@@ -4,10 +4,12 @@ using UnityEngine;
 /// <summary>
 /// Static A* search over a Vector3Int grid (matching the 1x1 tilemap cells the
 /// rest of the project already uses). 8-directional movement with a
-/// corner-cutting guard and an octile-distance heuristic, since this game's
-/// movement is free-form 2D physics, not a strict 4-directional grid. Called
-/// infrequently (never per-frame — see PathfindingManager), so a simple
-/// dictionary-keyed open/closed set is used instead of a bounds-offset array.
+/// corner-cutting guard (optionally relaxed for small movers — see
+/// allowDiagonalSqueeze on FindPathCells) and an octile-distance heuristic,
+/// since this game's movement is free-form 2D physics, not a strict
+/// 4-directional grid. Called infrequently (never per-frame — see
+/// PathfindingManager), so a simple dictionary-keyed open/closed set is used
+/// instead of a bounds-offset array.
 /// </summary>
 public static class AStarPathfinder
 {
@@ -66,8 +68,8 @@ public static class AStarPathfinder
         }
     }
 
-    /// <summary>Finds a path of cells from startCell to goalCell, avoiding blockedCells, within bounds. Returns null if unreachable.</summary>
-    public static List<Vector3Int> FindPathCells(Vector3Int startCell, Vector3Int goalCell, BoundsInt bounds, HashSet<Vector3Int> blockedCells)
+    /// <summary>Finds a path of cells from startCell to goalCell, avoiding blockedCells, within bounds. Returns null if unreachable. By default a diagonal move is refused whenever either flanking orthogonal cell is blocked (see the corner-cutting comment below) — pass allowDiagonalSqueeze true (small movers only — see PathfindingManager.FindPath) to permit cutting corners formed by ordinary blockedCells, while alwaysCornerBlockedCells (if given) still unconditionally blocks the corner regardless, for obstacles no mover should ever cut through no matter how small (deep water: a depth limit, not a sizing issue).</summary>
+    public static List<Vector3Int> FindPathCells(Vector3Int startCell, Vector3Int goalCell, BoundsInt bounds, HashSet<Vector3Int> blockedCells, bool allowDiagonalSqueeze = false, HashSet<Vector3Int> alwaysCornerBlockedCells = null)
     {
         if (!bounds.Contains(startCell) || !bounds.Contains(goalCell)) return null;
         if (startCell == goalCell) return new List<Vector3Int> { startCell };
@@ -99,10 +101,24 @@ public static class AStarPathfinder
                     // Disallow cutting the corner between two obstacle-adjacent
                     // cells — a mover has physical size and shouldn't clip
                     // through a gap that's only geometrically open at a point.
+                    // A small enough mover can be told to ignore this against
+                    // ordinary obstacles (allowDiagonalSqueeze) — e.g. squeezing
+                    // diagonally between two resource nodes that are themselves
+                    // diagonal from each other — but alwaysCornerBlockedCells
+                    // still applies unconditionally either way.
                     Vector3Int flankA = new Vector3Int(current.x + offset.x, current.y, current.z);
                     Vector3Int flankB = new Vector3Int(current.x, current.y + offset.y, current.z);
-                    if (!bounds.Contains(flankA) || blockedCells.Contains(flankA)) continue;
-                    if (!bounds.Contains(flankB) || blockedCells.Contains(flankB)) continue;
+
+                    if (!bounds.Contains(flankA) || !bounds.Contains(flankB)) continue;
+
+                    if (allowDiagonalSqueeze)
+                    {
+                        if (alwaysCornerBlockedCells != null && (alwaysCornerBlockedCells.Contains(flankA) || alwaysCornerBlockedCells.Contains(flankB))) continue;
+                    }
+                    else
+                    {
+                        if (blockedCells.Contains(flankA) || blockedCells.Contains(flankB)) continue;
+                    }
                 }
 
                 float tentativeG = bestG[current] + (isDiagonal ? DiagonalCost : OrthogonalCost);

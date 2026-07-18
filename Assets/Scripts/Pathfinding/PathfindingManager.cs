@@ -60,8 +60,8 @@ public class PathfindingManager : MonoBehaviour
 
     private void InvalidateDeepWaterCache() => deepWaterCells = null;
 
-    /// <summary>Finds a world-space waypoint path from start to goal avoiding nature, and — if avoidDeepWater is true — every deep-water cell too. Turtles always pass true (see TurtleAgent.BeginPathTo) so they can never path further out than the shallows; trash leaves this false since it must cross open water to reach shore. Returns null if unavailable/unreachable (callers should fall back to a direct route only when avoidDeepWater is false — see BeginPathTo), or an empty list if no intermediate waypoints are needed.</summary>
-    public List<Vector3> FindPath(Vector3 start, Vector3 goal, bool avoidDeepWater = false)
+    /// <summary>Finds a world-space waypoint path from start to goal avoiding nature, and — if avoidDeepWater is true — every deep-water cell too. Turtles always pass true (see TurtleAgent.BeginPathTo) so they can never path further out than the shallows; trash leaves this false since it must cross open water to reach shore. Turtles also pass allowDiagonalSqueeze true — they're small enough to cut a corner formed by two nature obstacles (e.g. moving diagonally between two resource nodes that are themselves diagonal from each other, or reaching one nestled behind such a pair) — but this never lets a path cut a corner across deep water regardless, since that's a hard depth limit, not a sizing issue; trash leaves it false, keeping the strict corner-cutting guard. Returns null if unavailable/unreachable (callers should fall back to a direct route only when avoidDeepWater is false — see BeginPathTo), or an empty list if no intermediate waypoints are needed.</summary>
+    public List<Vector3> FindPath(Vector3 start, Vector3 goal, bool avoidDeepWater = false, bool allowDiagonalSqueeze = false)
     {
         Tilemap grid = islandGenerator != null ? islandGenerator.WaterTilemap : null;
         if (grid == null) return null;
@@ -70,17 +70,21 @@ public class PathfindingManager : MonoBehaviour
         Vector3Int goalCell = grid.WorldToCell(goal);
 
         HashSet<Vector3Int> blocked = BuildBlockedCells(grid);
-        if (avoidDeepWater) blocked.UnionWith(GetDeepWaterCells(grid));
+        HashSet<Vector3Int> deepWater = avoidDeepWater ? GetDeepWaterCells(grid) : null;
+        if (deepWater != null) blocked.UnionWith(deepWater);
 
         // The destination and starting cell are always reachable regardless of
         // what occupies them — a mover needs to path onto a resource/building's
         // own cell to bounce-interact with it, and a mover whose current
         // position happens to round onto a "blocked" cell (physics jitter)
-        // should never immediately fail to path at all.
+        // should never immediately fail to path at all. Exception: a deep-water
+        // goal cell stays blocked when avoidDeepWater is set, or this exemption
+        // would defeat the whole point — a mover that must avoid deep water can
+        // never treat a deep-water destination as reachable.
         blocked.Remove(startCell);
-        blocked.Remove(goalCell);
+        if (deepWater == null || !deepWater.Contains(goalCell)) blocked.Remove(goalCell);
 
-        List<Vector3Int> cellPath = AStarPathfinder.FindPathCells(startCell, goalCell, grid.cellBounds, blocked);
+        List<Vector3Int> cellPath = AStarPathfinder.FindPathCells(startCell, goalCell, grid.cellBounds, blocked, allowDiagonalSqueeze, deepWater);
         if (cellPath == null) return null;
         if (cellPath.Count <= 1) return new List<Vector3>();
 
@@ -94,11 +98,19 @@ public class PathfindingManager : MonoBehaviour
     }
 
     /// <summary>
-    /// True if no nature obstacle sits between from and to — used so a mover
+    /// True if no nature obstacle sits between from and to AND the straight
+    /// segment between them never dips into deep water — used so a mover
     /// chasing a visible target (e.g. a turtle aggro-chasing trash) can skip
-    /// pathfinding entirely and just steer straight at it. Ignores everything
-    /// except ResourceNode colliders (the turtle's/target's own colliders,
-    /// buildings, other trash, etc. never block line of sight).
+    /// pathfinding entirely and just steer straight at it. The deep-water
+    /// check matters even when neither endpoint itself is in deep water: two
+    /// shallow-water/shore points on either side of a bay can still have open
+    /// ocean directly between them, and without this a turtle would swim
+    /// straight across it to close the gap — this is the same "never cross
+    /// open ocean" rule FindPath's avoidDeepWater already enforces for normal
+    /// pathfinding, just also applied to this direct-steer shortcut. The
+    /// obstacle check itself ignores everything except ResourceNode colliders
+    /// (the turtle's/target's own colliders, buildings, other trash, etc.
+    /// never block line of sight).
     /// </summary>
     public bool HasLineOfSight(Vector3 from, Vector3 to)
     {
@@ -114,7 +126,25 @@ public class PathfindingManager : MonoBehaviour
             if (hit.collider != null && hit.collider.GetComponentInParent<ResourceNode>() != null) return false;
         }
 
-        return true;
+        return !SegmentCrossesDeepWater(origin, offset, distance);
+    }
+
+    /// <summary>Samples the origin→(origin+offset) segment roughly once per water cell, so a straight-line shortcut can never cut across a stretch of deep water lying between two otherwise-valid endpoints.</summary>
+    private bool SegmentCrossesDeepWater(Vector2 origin, Vector2 offset, float distance)
+    {
+        Tilemap grid = islandGenerator != null ? islandGenerator.WaterTilemap : null;
+        if (grid == null) return false;
+
+        float cellSize = Mathf.Max(grid.cellSize.x, grid.cellSize.y, 0.01f);
+        int steps = Mathf.Max(1, Mathf.CeilToInt(distance / cellSize));
+
+        for (int i = 0; i <= steps; i++)
+        {
+            Vector2 point = origin + offset * (i / (float)steps);
+            if (IsDeepWater(point)) return true;
+        }
+
+        return false;
     }
 
     private HashSet<Vector3Int> BuildBlockedCells(Tilemap grid)
@@ -149,6 +179,51 @@ public class PathfindingManager : MonoBehaviour
         if (grid == null) return false;
 
         return islandGenerator.IsDeepWater(grid.WorldToCell(worldPosition));
+    }
+
+    /// <summary>Finds the nearest non-deep-water cell center to worldPosition — used to give a turtle chasing a target that's drifted into deep water (e.g. storm trash) a concrete shoreline point to swim to and hold at, instead of freezing wherever it happened to be. Searches outward ring by ring (Chebyshev distance) since the island's exact shape isn't known analytically. Falls back to worldPosition itself if the whole map is deep water or no grid exists — shouldn't happen with a real generated island.</summary>
+    public Vector3 NearestNonDeepWaterPoint(Vector3 worldPosition)
+    {
+        Tilemap grid = islandGenerator != null ? islandGenerator.WaterTilemap : null;
+        if (grid == null) return worldPosition;
+
+        Vector3Int center = grid.WorldToCell(worldPosition);
+        if (!IsDeepWater(worldPosition)) return grid.GetCellCenterWorld(center);
+
+        HashSet<Vector3Int> deepWater = GetDeepWaterCells(grid);
+        int maxRadius = Mathf.Max(grid.cellBounds.size.x, grid.cellBounds.size.y);
+
+        for (int radius = 1; radius <= maxRadius; radius++)
+        {
+            Vector3Int best = default;
+            float bestSqrDistance = float.MaxValue;
+            bool found = false;
+
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                for (int dy = -radius; dy <= radius; dy++)
+                {
+                    // Only the ring's perimeter — smaller radii already covered the interior.
+                    if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != radius) continue;
+
+                    Vector3Int cell = new Vector3Int(center.x + dx, center.y + dy, center.z);
+                    if (!grid.cellBounds.Contains(cell) || deepWater.Contains(cell)) continue;
+
+                    Vector3 cellCenter = grid.GetCellCenterWorld(cell);
+                    float sqrDistance = ((Vector2)cellCenter - (Vector2)worldPosition).sqrMagnitude;
+                    if (sqrDistance < bestSqrDistance)
+                    {
+                        bestSqrDistance = sqrDistance;
+                        best = cell;
+                        found = true;
+                    }
+                }
+            }
+
+            if (found) return grid.GetCellCenterWorld(best);
+        }
+
+        return worldPosition;
     }
 
     private HashSet<Vector3Int> GetDeepWaterCells(Tilemap grid)

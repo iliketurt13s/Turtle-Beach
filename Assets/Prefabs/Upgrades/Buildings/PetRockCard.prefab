@@ -46,6 +46,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BuildingUnlockUpgradeCard
   displayName: PetRock
   icon: {fileID: -7062113407425019418, guid: 8c2836c9cf2d7004bbadc0cde36282d5, type: 3}
-  description: Make rocks regenerate faster.
+  description: Place around rocks to speed up respawn time.
   stackable: 0
   buildableToUnlock: {fileID: 3180633685336229162, guid: 5d9b33f8d357ada459bc3cac2375f970, type: 3}

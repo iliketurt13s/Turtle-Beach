@@ -214,9 +214,11 @@ GameObject:
   - component: {fileID: 8743084134773562270}
   - component: {fileID: 8654395565653072041}
   - component: {fileID: 5167114374913987374}
+  - component: {fileID: 3261605584262626942}
+  - component: {fileID: -5376637209562718010}
   m_Layer: 0
   m_Name: Rock
-  m_TagString: Untagged
+  m_TagString: food
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -251,7 +253,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ResourceNode
   resourceType: 1
   hitsToDeplete: 15
-  respawnDuration: 20
+  respawnDuration: 60
   visual: {fileID: 2435642429919565962}
   dropPrefab: {fileID: 891772943774278084, guid: 635dca1eea0c93d429aac2e649d0353f, type: 3}
   dropSpawnRadius: 0.5
@@ -318,3 +320,28 @@ CircleCollider2D:
   m_CompositeOrder: 0
   m_Offset: {x: 0, y: 0}
   m_Radius: 0.25
+--- !u!114 &3261605584262626942
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6796091774791622715}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a8f16785768402bb50a9a394d3e382a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HoverOutlineSpriteSource
+  spriteRenderer: {fileID: 2211097976757643937}
+--- !u!114 &-5376637209562718010
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6796091774791622715}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b8f2c19eaa6a534495b8eafba9130cd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ResourceClickTarget

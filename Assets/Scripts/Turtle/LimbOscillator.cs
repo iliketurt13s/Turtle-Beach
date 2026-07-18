@@ -30,11 +30,21 @@ public class LimbOscillator : MonoBehaviour
 
     private float phase;
 
+    // Dynamic, freely reassignable overlay on top of frequency — distinct from
+    // MultiplyFrequency's permanent, one-time baseline shift (Flipper). Set by
+    // TurtleLocomotion from the combined product of every active speed buff, so
+    // buffs speed up the stroke rate itself (animation plays faster, strokes —
+    // and therefore propulsion impulses, see TurtleLocomotion — happen at a
+    // quicker interval) rather than the force per stroke. Multiplies with
+    // whatever frequency currently is, so it stacks correctly with a permanent
+    // Flipper boost already applied underneath it.
+    private float speedBuffMultiplier = 1f;
+
     private void Update()
     {
         if (!playing) return;
 
-        phase += frequency * Time.deltaTime;
+        phase += frequency * speedBuffMultiplier * Time.deltaTime;
 
         float cycle = (phase + phaseOffset) * Mathf.PI * 2f;
         float angle = Mathf.Sin(cycle) * amplitude;
@@ -52,8 +62,11 @@ public class LimbOscillator : MonoBehaviour
 
     public void SetPlaying(bool value) => playing = value;
 
-    /// <summary>Permanently scales this limb's oscillation frequency, e.g. for an indefinite speed buff.</summary>
+    /// <summary>Permanently scales this limb's oscillation frequency, e.g. for an indefinite speed buff (Flipper). Distinct from SetSpeedBuffMultiplier's dynamic overlay — this shifts the baseline frequency itself, once, rather than something that can be freely reassigned as buffs come and go.</summary>
     public void MultiplyFrequency(float multiplier) => frequency *= multiplier;
+
+    /// <summary>Called by TurtleLocomotion with the combined product of every currently-active speed buff (permanent upgrade x campfire x temporary food buff), so this fin's stroke rate speeds up right along with propulsion. Overwrites, not compounds — TurtleLocomotion always passes the already-combined total.</summary>
+    public void SetSpeedBuffMultiplier(float multiplier) => speedBuffMultiplier = multiplier;
 
     /// <summary>Resets both the phase offset and the live cycle position to 0, so calling this on every limb the same frame brings them all into lockstep from that moment on (assuming they share the same frequency).</summary>
     public void SyncPhase()

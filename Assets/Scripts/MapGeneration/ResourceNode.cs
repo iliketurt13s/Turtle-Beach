@@ -7,10 +7,12 @@ using UnityEngine;
 /// so a colliding TurtleAgent can find this via GetComponentInParent&lt;ResourceNode&gt;().
 /// Never destroyed by harvesting — instead, after HitsToDeplete hits it goes
 /// dormant (Visual deactivated, stops yielding anything) until RespawnDuration
-/// elapses, then reactivates. Nearby ResourceRespawnBooster
-/// buildings (Pet Rock/Fertilizer) can speed up that respawn by registering
-/// themselves here; multiple registered boosters stack linearly, not by taking
-/// the strongest one.
+/// elapses, then reactivates. The countdown only ticks during the day — it
+/// freezes for the full duration of a storm and resumes exactly where it left
+/// off once day returns, rather than continuing to progress overnight.
+/// Nearby ResourceRespawnBooster buildings (Pet Rock/Fertilizer) can speed up
+/// that respawn by registering themselves here; multiple registered boosters
+/// stack linearly, not by taking the strongest one.
 /// </summary>
 public class ResourceNode : MonoBehaviour
 {
@@ -20,7 +22,7 @@ public class ResourceNode : MonoBehaviour
     [Header("Depletion")]
     [Tooltip("How many successful harvest hits before this node goes dormant.")]
     [SerializeField] private int hitsToDeplete = 6;
-    [Tooltip("Seconds a dormant node takes to reactivate, before any booster speedup.")]
+    [Tooltip("Seconds a dormant node takes to reactivate, before any booster speedup. Only counts down during the day — frozen for the whole duration of a storm.")]
     [SerializeField] private float respawnDuration = 20f;
     [Tooltip("Deactivated while this node is depleted, reactivated when it respawns.")]
     [SerializeField] private GameObject visual;
@@ -50,6 +52,11 @@ public class ResourceNode : MonoBehaviour
     private void Update()
     {
         if (!isDepleted) return;
+
+        // Freeze the countdown during a storm — trash is battering the island
+        // at night, not respawning it — and simply resume where it left off
+        // once day returns.
+        if (DayStormCycle.IsStorming) return;
 
         float multiplier = 1f;
         foreach (ResourceRespawnBooster booster in activeBoosters)

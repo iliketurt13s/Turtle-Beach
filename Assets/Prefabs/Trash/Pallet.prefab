@@ -19,7 +19,7 @@ GameObject:
   - component: {fileID: 5849298380084301478}
   m_Layer: 0
   m_Name: Pallet
-  m_TagString: Untagged
+  m_TagString: trash
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -174,9 +174,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6a4c6e8ee6d71814bab19b7d4943f9d3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TrashAgent
-  burstInterval: 2
+  burstInterval: 4
   burstIntervalVariance: 0.25
-  impulseForce: 20
+  impulseForce: 35
   directionRandomness: 15
   momentumRampDuration: 1
   startingSpeedMultiplier: 0.3
@@ -222,7 +222,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 289d4b80b87779e41a790aa217841c05, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TrashHealth
-  maxHealth: 25
+  maxHealth: 20
   damagePerHit: 1
 --- !u!114 &5849298380084301478
 MonoBehaviour:

@@ -11,11 +11,18 @@ using UnityEngine;
 /// at it on an interval — no line-of-sight check yet (deliberately isolated in
 /// FindTarget so that can be added later without touching the firing loop).
 /// The instant a storm ends, the stationed turtle is automatically released.
+/// The player can also pull it away early with a direct order at any time,
+/// day or night (see TurtleAgent.MoveToPoint/MoveToBuilding/MoveToResource,
+/// which unpark a stationed turtle themselves) — Update notices the vacancy
+/// on its own and forgets the turtle so a new one can be stationed.
 /// </summary>
 public class Watchtower : MonoBehaviour
 {
     [SerializeField] private float targetRadius = 6f;
     [SerializeField] private float fireInterval = 1.5f;
+
+    /// <summary>fireInterval shortened by any run-wide bonus from Watchtower-branch upgrade cards (see UpgradeManager.WatchtowerFireRateBonus), e.g. a 0.2 bonus fires every fireInterval / 1.2 seconds — read live, same pattern as Campfire.EffectiveSpeedBonus.</summary>
+    private float EffectiveFireInterval => fireInterval / (1f + (UpgradeManager.Instance != null ? UpgradeManager.Instance.WatchtowerFireRateBonus : 0f));
     [Tooltip("Where a stationed turtle is snapped to and held — typically the tower's own center. Defaults to this transform if left unassigned.")]
     [SerializeField] private Transform turtleDockPoint;
     [SerializeField] private Transform firePoint;
@@ -25,10 +32,9 @@ public class Watchtower : MonoBehaviour
     private bool wasStorming;
     private float fireTimer;
 
-    /// <summary>Called by TurtleAgent.HandleHeadHit on every physical head-bump against this tower — including incidental ones from a turtle just passing by on some other task. Only actually stations the turtle if: it's currently storming (turtles can't mount the tower during the day), nobody's already stationed, and the tower is genuinely this turtle's current order (CurrentTaskTarget), not just something it happened to collide with.</summary>
+    /// <summary>Called by TurtleAgent.HandleHeadHit on every physical head-bump against this tower — including incidental ones from a turtle just passing by on some other task. Only actually stations the turtle if nobody's already stationed and the tower is genuinely this turtle's current order (CurrentTaskTarget), not just something it happened to collide with — stationing itself works any time (day or storm), so a turtle sent here always gets snapped to dock center on first contact rather than left jammed against the tower's solid collider; only the rotate-and-fire behavior in Update() is storm-gated.</summary>
     public void TryStationTurtle(TurtleAgent turtle)
     {
-        if (!DayStormCycle.IsStorming) return;
         if (linkedTurtle != null || turtle == null) return;
         if (turtle.CurrentTaskTarget != transform) return;
 
@@ -39,6 +45,13 @@ public class Watchtower : MonoBehaviour
 
     private void Update()
     {
+        // The player can pull a stationed turtle away with a direct order at
+        // any time, including mid-storm (see TurtleAgent.MoveToPoint/
+        // MoveToBuilding/MoveToResource, which unpark it themselves) — notice
+        // that here and forget it, so a new turtle can be stationed instead
+        // of this tower thinking its post is still filled.
+        if (linkedTurtle != null && !linkedTurtle.IsParked) linkedTurtle = null;
+
         bool storming = DayStormCycle.IsStorming;
         if (wasStorming && !storming) ReleaseTurtle();
         wasStorming = storming;
@@ -49,7 +62,7 @@ public class Watchtower : MonoBehaviour
         linkedTurtle.SetLookTarget(target != null ? target.transform : null);
 
         fireTimer += Time.deltaTime;
-        if (fireTimer < fireInterval) return;
+        if (fireTimer < EffectiveFireInterval) return;
         fireTimer = 0f;
 
         if (target != null) FireAt(target);
@@ -74,7 +87,8 @@ public class Watchtower : MonoBehaviour
 
         Vector3 spawnPosition = firePoint != null ? firePoint.position : transform.position;
         GameObject instance = Instantiate(sandBallPrefab, spawnPosition, Quaternion.identity);
-        instance.GetComponent<SandBall>()?.Launch(target.transform.position);
+        int bonusDamage = UpgradeManager.Instance != null ? UpgradeManager.Instance.WatchtowerDamageBonus : 0;
+        instance.GetComponent<SandBall>()?.Launch(target.transform.position, bonusDamage);
     }
 
     private void OnDestroy()

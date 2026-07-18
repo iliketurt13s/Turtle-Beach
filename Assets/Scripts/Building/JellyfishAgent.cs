@@ -140,14 +140,16 @@ public class JellyfishAgent : MonoBehaviour
         return false;
     }
 
-    /// <summary>Called by TurtleAgent.HandleHeadHit when a turtle's head touches this jellyfish.</summary>
-    public void RegisterHit(TurtleAgent attacker)
+    /// <summary>Called by TurtleAgent.HandleHeadHit when a turtle's head touches this jellyfish. Returns true if this hit was the one that consumed/destroyed it — callers must not rely on a `this == null` check afterward, since Destroy() only takes effect at end of frame, not immediately.</summary>
+    public bool RegisterHit(TurtleAgent attacker)
     {
-        if (attacker == null) return;
+        if (attacker == null) return false;
 
         hitsTaken++;
         attacker.CollectResourceUnit(ResourceManager.ResourceType.JellyfishGuts, transform.position);
 
-        if (hitsTaken >= hitsRequired) Destroy(gameObject);
+        bool consumed = hitsTaken >= hitsRequired;
+        if (consumed) Destroy(gameObject);
+        return consumed;
     }
 }

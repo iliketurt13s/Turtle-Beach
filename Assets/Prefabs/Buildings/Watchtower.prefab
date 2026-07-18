@@ -15,6 +15,7 @@ GameObject:
   - component: {fileID: 1154026437669159468}
   - component: {fileID: 6964874271759812942}
   - component: {fileID: 2768486767679143311}
+  - component: {fileID: -2318785687277859568}
   m_Layer: 7
   m_Name: Watchtower
   m_TagString: Untagged
@@ -132,6 +133,7 @@ MonoBehaviour:
     amount: 15
   - type: 1
     amount: 15
+  priceIncreasePercentPerPlacement: 25
 --- !u!61 &1154026437669159468
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -218,10 +220,22 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Watchtower
   targetRadius: 6
-  fireInterval: 1.5
+  fireInterval: 1
   turtleDockPoint: {fileID: 0}
   firePoint: {fileID: 9114680350766060333}
   sandBallPrefab: {fileID: 8594687565104925626, guid: f498bce7bbe6dde4cbf8d3de48458430, type: 3}
+--- !u!114 &-2318785687277859568
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5409112863314033137}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: da5bd9b064cf9ed448e39481ab09ceef, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BuildingHoverTint
 --- !u!1001 &8612678017202326131
 PrefabInstance:
   m_ObjectHideFlags: 0

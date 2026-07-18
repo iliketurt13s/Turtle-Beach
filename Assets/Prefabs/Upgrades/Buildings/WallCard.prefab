@@ -47,5 +47,5 @@ MonoBehaviour:
   displayName: Wall
   icon: {fileID: 6597556643229072693, guid: 7aa238dfcad6cbd4bb4b66e5a9bc6d4b, type: 3}
   description: Build walls that protect your nest.
-  stackable: 1
+  stackable: 0
   buildableToUnlock: {fileID: 3869808242819294712, guid: 16f96a0fba2b1294cb39c97fb60bd158, type: 3}
