@@ -16,7 +16,9 @@ using UnityEngine.InputSystem;
 /// a click, sending the selected turtle wherever the camera ended up panning
 /// to. CameraController.WasDragging (cumulative movement while held, not just
 /// net displacement) is checked too, so any real drag suppresses the order
-/// regardless of where it happened to end.
+/// regardless of where it happened to end. At night (DayStormCycle.IsStorming),
+/// resource/building targeting is disabled entirely — every click just issues
+/// a ground-move order, even one landing on a resource or interactable building.
 /// </summary>
 public class TurtleSelectionController : MonoBehaviour
 {
@@ -94,8 +96,13 @@ public class TurtleSelectionController : MonoBehaviour
         // would otherwise need to land on — e.g. a palm tree's canopy is much
         // bigger than its trunk collider. Falls back to the collider-based
         // BuildingHealth/ground-move resolution below only if no resource matched.
-        Transform clickedResource = ResourceClickTarget.FindClickTargetAt(worldPoint);
-        BuildingHealth clickedBuilding = hit != null ? hit.GetComponentInParent<BuildingHealth>() : null;
+        // At night (storming), a turtle's target can't be (re)assigned at all —
+        // clicking a resource or interactable building just moves it there like
+        // any other ground point, matching TurtleAgent treating harvesting as
+        // day-only and cancelling resource tasks the instant a storm starts.
+        bool night = DayStormCycle.IsStorming;
+        Transform clickedResource = night ? null : ResourceClickTarget.FindClickTargetAt(worldPoint);
+        BuildingHealth clickedBuilding = (!night && hit != null) ? hit.GetComponentInParent<BuildingHealth>() : null;
 
         if (clickedResource != null)
         {

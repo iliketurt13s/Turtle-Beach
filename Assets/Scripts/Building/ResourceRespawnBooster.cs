@@ -30,6 +30,8 @@ public class ResourceRespawnBooster : MonoBehaviour
     [SerializeField] public float range = 2f;
     [Tooltip("Particle effect (or any visual) toggled on for as long as this booster is actively boosting at least one node, off otherwise. Leave unassigned for no visual cue.")]
     [SerializeField] private GameObject boostVisual;
+    [Tooltip("Circle-shaped particle effect (see its Shape module) whose emission radius is kept in sync with Effective Range every frame, so a Fertilizer/Pet Rock-branch range upgrade visibly grows it too. Leave unassigned to skip syncing.")]
+    [SerializeField] private ParticleSystem rangeParticles;
 
     /// <summary>respawnSpeedBonus plus any run-wide bonus from this booster's building-branch upgrade cards — read live rather than cached, so a card picked mid-run applies immediately to this booster whether it was already placed or built afterward (see Campfire.EffectiveSpeedBonus for the same pattern).</summary>
     public float RespawnSpeedBonus => respawnSpeedBonus + KindRespawnBonus;
@@ -57,10 +59,37 @@ public class ResourceRespawnBooster : MonoBehaviour
 
     private readonly HashSet<ResourceNode> boostedNodes = new HashSet<ResourceNode>();
 
+    /// <summary>rangeParticles' originally-authored emission rate, captured once before SyncRangeParticles ever scales it — the baseline a range upgrade's area-ratio multiplier is applied to (see SyncRangeParticles).</summary>
+    private float baseParticleEmissionRate;
+
+    private void Awake()
+    {
+        if (rangeParticles != null) baseParticleEmissionRate = rangeParticles.emission.rateOverTime.constant;
+    }
+
     private void Update()
     {
         UpdateProximityRange();
         if (boostVisual != null) boostVisual.SetActive(boostedNodes.Count > 0);
+        SyncRangeParticles();
+    }
+
+    /// <summary>Keeps rangeParticles' circle Shape module radius matching EffectiveRange every frame, so it grows/shrinks along with a Fertilizer/Pet Rock-branch range upgrade exactly like the actual boost radius does — and scales emission rate by the same area ratio (EffectiveRange/range)^2, since a circle's area grows with the square of its radius, so particle count alone staying fixed would thin the density out as the circle grows (or overcrowd it as the circle shrinks). baseParticleEmissionRate is the untouched authored rate this scales from, not whatever rateOverTime currently is.</summary>
+    private void SyncRangeParticles()
+    {
+        if (rangeParticles == null) return;
+
+        float effectiveRange = EffectiveRange;
+
+        ParticleSystem.ShapeModule shape = rangeParticles.shape;
+        shape.radius = effectiveRange;
+
+        if (range > 0f)
+        {
+            ParticleSystem.EmissionModule emission = rangeParticles.emission;
+            float areaRatio = (effectiveRange * effectiveRange) / (range * range);
+            emission.rateOverTime = baseParticleEmissionRate * areaRatio;
+        }
     }
 
     /// <summary>Registers/unregisters with every currently in-range, type-matching ResourceNode based on live distance each frame, instead of trigger enter/exit events — a node just needs to be within range, regardless of collider/layer setup.</summary>

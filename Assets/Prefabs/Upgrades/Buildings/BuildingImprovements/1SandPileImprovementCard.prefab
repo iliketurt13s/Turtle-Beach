@@ -49,4 +49,4 @@ MonoBehaviour:
   description: Sand piles slow trash in contact even more
   stackable: 1
   requiredBuilding: {fileID: 7576401011126260485, guid: d1bcc81195d9be64e8245ded9d663e2d, type: 3}
-  dampingIncreaseAdded: 3
+  dampingIncreaseAdded: 2

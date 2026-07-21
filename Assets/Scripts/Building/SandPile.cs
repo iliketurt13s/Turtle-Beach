@@ -56,13 +56,25 @@ public class SandPile : MonoBehaviour
 
         List<Rigidbody2D> stale = null;
 
-        foreach (Rigidbody2D rb in originalDamping.Keys)
+        // Snapshot first: ApplyDamage below can kill the trash, and Destroy()
+        // fires OnTriggerExit2D synchronously the instant a destroyed
+        // collider's trigger contact is cleaned up (unlike the rest of
+        // destruction, which is deferred) -- that reenters OnTriggerExit2D and
+        // removes from originalDamping/dotTimers mid-loop, so enumerating the
+        // live dictionary here would throw "Collection was modified".
+        List<Rigidbody2D> rbs = new List<Rigidbody2D>(originalDamping.Keys);
+
+        foreach (Rigidbody2D rb in rbs)
         {
             if (rb == null)
             {
                 (stale ??= new List<Rigidbody2D>()).Add(rb);
                 continue;
             }
+
+            // May have been removed by a synchronous OnTriggerExit2D triggered
+            // from a previous iteration's ApplyDamage call (see above).
+            if (!originalDamping.ContainsKey(rb)) continue;
 
             float timer = (dotTimers.TryGetValue(rb, out float t) ? t : 0f) + Time.deltaTime;
             if (timer >= dotTickInterval)
@@ -71,7 +83,11 @@ public class SandPile : MonoBehaviour
                 rb.GetComponentInParent<TrashHealth>()?.ApplyDamage(damagePerTick);
             }
 
-            dotTimers[rb] = timer;
+            // Don't resurrect an entry OnTriggerExit2D just removed.
+            if (originalDamping.ContainsKey(rb))
+            {
+                dotTimers[rb] = timer;
+            }
         }
 
         if (stale == null) return;

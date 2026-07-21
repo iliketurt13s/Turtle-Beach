@@ -46,6 +46,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::WoodDoubleDropUpgradeCard
   displayName: More Wood
   icon: {fileID: 4717499751519559274, guid: 0507fd885b4328844b5f1916463ec64c, type: 3}
-  description: Chance for trees to drop two wood instead of one.
+  description: +20% chance for trees to drop two wood instead of one.
   stackable: 1
   doubleDropChanceAdded: 0.2

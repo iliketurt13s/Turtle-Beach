@@ -124,8 +124,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9a7733ad5dc20c24d8a6eab2f5cd42a5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SandPile
-  dampingIncrease: 5
-  durationBeforeDestroyed: 20
+  dampingIncrease: 3
+  durationBeforeDestroyed: 10
+  dotTickInterval: 1
 --- !u!50 &2919316187676218601
 Rigidbody2D:
   serializedVersion: 5

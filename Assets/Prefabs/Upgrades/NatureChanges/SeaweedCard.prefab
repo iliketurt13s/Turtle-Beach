@@ -46,7 +46,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SeaweedUpgradeCard
   displayName: Seaweed
   icon: {fileID: 6468324213665953819, guid: bd5364e398533a74998e764b2db2faa5, type: 3}
-  description: Spawn a patch of seaweed in the shallows.
+  description: Spawn a patch of seaweed in the shallows. Collected seaweed boosts
+    speed of turtles.
   stackable: 1
   seaweedNodePrefab: {fileID: 8331105540512433779, guid: 4b7439dcf3818d14982fa138684551ac, type: 3}
   nodeCount: 3

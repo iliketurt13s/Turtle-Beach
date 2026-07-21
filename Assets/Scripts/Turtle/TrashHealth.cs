@@ -15,14 +15,21 @@ public class TrashHealth : MonoBehaviour
 {
     private static readonly List<TrashHealth> allTrash = new List<TrashHealth>();
 
+    /// <summary>Every currently-alive piece of trash, so e.g. TurtleNest can check whether any has reached the island/shallows yet before it starts dispensing food.</summary>
+    public static IReadOnlyList<TrashHealth> AllTrash => allTrash;
+
     [SerializeField] private int maxHealth = 3;
     [SerializeField] private int damagePerHit = 1;
 
     private int currentHealth;
+    private TrashDefinition definition;
+    private Rigidbody2D rb;
 
     private void Awake()
     {
         currentHealth = maxHealth;
+        definition = GetComponent<TrashDefinition>();
+        rb = GetComponent<Rigidbody2D>();
     }
 
     private void OnEnable()
@@ -46,14 +53,32 @@ public class TrashHealth : MonoBehaviour
         if (isCrit) Debug.Log($"TrashHealth: critical hit! {totalDamage} damage (base {baseDamage})");
 
         currentHealth -= totalDamage;
-        if (currentHealth <= 0) Destroy(gameObject);
+
+        if (attacker.HasCoconutKnockbackBuff && rb != null)
+        {
+            Vector2 pushDir = ((Vector2)transform.position - (Vector2)other.transform.position).normalized;
+            rb.AddForce(pushDir * attacker.CoconutKnockbackForce, ForceMode2D.Impulse);
+        }
+
+        if (currentHealth <= 0) Die();
     }
 
     /// <summary>Applies flat damage from a non-turtle source (e.g. a Watchtower's SandBall projectile).</summary>
     public void ApplyDamage(int amount)
     {
         currentHealth -= amount;
-        if (currentHealth <= 0) Destroy(gameObject);
+        if (currentHealth <= 0) Die();
+    }
+
+    /// <summary>Shared by both death paths above so score is awarded exactly once regardless of what actually landed the killing blow (a turtle's own bite, a Watchtower's SandBall, Sand Pile damage-over-time, ...). Amount is this trash type's own TrashDefinition.Rating (the same "cost index" TrashSpawner spends its round budget on) doubled, so tougher plastic is worth proportionally more.</summary>
+    private void Die()
+    {
+        if (definition != null)
+        {
+            ScoreManager.Instance?.AddScore(Mathf.RoundToInt(definition.Rating * 2f));
+        }
+
+        Destroy(gameObject);
     }
 
     /// <summary>Finds the closest currently-alive trash within maxDistance of position, or null if none.</summary>

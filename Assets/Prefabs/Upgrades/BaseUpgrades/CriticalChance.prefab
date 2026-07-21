@@ -46,7 +46,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CritChanceUpgradeCard
   displayName: Sharp Fins
   icon: {fileID: -6521680920447403254, guid: 55dabad55cf5dec45a2b6205fdd13a0c, type: 3}
-  description: Turtles have a chance to land critical hits on trash, doing double
+  description: Turtles have a +25% chance to land critical hits on trash, doing double
     damage.
   stackable: 1
   critChanceAdded: 0.25

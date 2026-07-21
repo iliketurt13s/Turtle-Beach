@@ -4,8 +4,8 @@ using UnityEngine.UI;
 
 /// <summary>
 /// One upgrade card slot: an icon and a select button. Hovering the icon
-/// shows this card's description via the owning UpgradeSelectionUI (a shared
-/// bottom-center text, not a per-card tooltip); clicking either the icon or
+/// shows this card's name and description via the owning UpgradeSelectionUI
+/// (shared text elements, not per-card tooltips); clicking either the icon or
 /// Select applies it.
 /// </summary>
 public class UpgradeCardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
@@ -38,11 +38,15 @@ public class UpgradeCardView : MonoBehaviour, IPointerEnterHandler, IPointerExit
 
     public void OnPointerEnter(PointerEventData eventData)
     {
-        if (owner != null && boundCard != null) owner.ShowDescription(boundCard.Description);
+        if (owner == null || boundCard == null) return;
+
+        owner.ShowName(boundCard.DisplayName);
+        owner.ShowDescription(boundCard.Description);
     }
 
     public void OnPointerExit(PointerEventData eventData)
     {
+        owner?.HideName();
         owner?.HideDescription();
     }
 

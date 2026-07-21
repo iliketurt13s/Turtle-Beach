@@ -46,7 +46,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PetRockRespawnUpgradeCard
   displayName: Bigger Smile
   icon: {fileID: -7062113407425019418, guid: 8c2836c9cf2d7004bbadc0cde36282d5, type: 3}
-  description: Rocks in range respawn at a faster rate.
+  description: Rocks in range respawn at an extra +25% faster rate.
   stackable: 1
   requiredBuilding: {fileID: 3180633685336229162, guid: 5d9b33f8d357ada459bc3cac2375f970, type: 3}
-  respawnBonusAdded: 0.2
+  respawnBonusAdded: 0.25

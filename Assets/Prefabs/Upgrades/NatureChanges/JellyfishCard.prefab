@@ -46,6 +46,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::JellyfishUpgradeCard
   displayName: Jellyfish
   icon: {fileID: -7893006368488389179, guid: 915a8a83552658e4ea69b814a739c663, type: 3}
-  description: Increase chances for jellyfish to spawn around the island.
+  description: Increase chances for jellyfish to spawn around the island. Collected
+    jellyfish boost damage of turtles.
   stackable: 1
   spawnChanceAdded: 0.1

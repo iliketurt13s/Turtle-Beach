@@ -14,6 +14,11 @@ using UnityEngine.Tilemaps;
 /// exactly one connected island: the map center is forced to land (so the
 /// turtle nest, spawned there, is never stranded in water) and everything not
 /// connected to that center point is discarded. Assumes the Grid cell size is 1x1.
+/// Optionally also paints a much larger purely-visual ring of plain deep water
+/// around this core map (see PaintDeepWaterOutskirts/HalfWidth/HalfHeight) so
+/// CameraController has more open ocean to zoom/pan into without ever
+/// affecting island generation, pathfinding, or trash spawning, which all key
+/// off the core map's own bounds instead.
 /// </summary>
 [RequireComponent(typeof(Grid))]
 public class IslandGenerator : MonoBehaviour
@@ -25,6 +30,8 @@ public class IslandGenerator : MonoBehaviour
     [SerializeField] private Tilemap shallowWaterTilemap;
     [Tooltip("Tilemap painted only on land cells, on top of the water.")]
     [SerializeField] private Tilemap sandTilemap;
+    [Tooltip("Optional: tilemap painted with plain deep water across a much larger rectangle surrounding the core map (see Outskirt Margin below), purely so the ocean visually extends past the play area when the camera zooms/pans out. Never read by island generation, pathfinding (PathfindingManager), or trash spawning (TrashSpawner) — those all still only ever consider Water Tilemap's core Width x Height. Leave unassigned to skip painting outskirts entirely.")]
+    [SerializeField] private Tilemap deepWaterOutskirtsTilemap;
 
     [Header("Map Size")]
     [Tooltip("Map width in tiles.")]
@@ -88,6 +95,10 @@ public class IslandGenerator : MonoBehaviour
     [Tooltip("Of a cell's 8 neighbors, how many must be land for the cell itself to become/stay land during smoothing. Higher = rounder, more conservative coastlines (and fewer surviving coves).")]
     [SerializeField, Range(1, 8)] private int smoothingNeighborThreshold = 4;
 
+    [Header("Deep Water Outskirts")]
+    [Tooltip("Extra tiles of plain deep water painted on every side of the core map onto Deep Water Outskirts Tilemap above, purely for visual/camera purposes — the core map (island shape, trash spawn range, pathfinding grid) is entirely unaffected. 0 = no outskirts painted even if the tilemap is assigned.")]
+    [SerializeField, Min(0)] private int outskirtMargin = 150;
+
     [Header("Shallow Water")]
     [Tooltip("How many tiles wide the shallow water ring is around every landmass. Large enough values bridge nearby islands together.")]
     [SerializeField] private int shallowWaterRadius = 3;
@@ -133,11 +144,11 @@ public class IslandGenerator : MonoBehaviour
     /// <summary>The TurtleNest component on the currently spawned nest, valid once IslandGenerated has fired.</summary>
     public TurtleNest TurtleNestInstance => spawnedNest != null ? spawnedNest.GetComponent<TurtleNest>() : null;
 
-    /// <summary>Half the map's width in world units. The map is always centered at world origin with 1x1 cell size, so it spans [-HalfWidth, HalfWidth] on X — useful for anything that needs to keep itself (e.g. the camera) from going past the grid's edge.</summary>
-    public float HalfWidth => width / 2f;
+    /// <summary>Half the outermost painted water's width in world units — the core map (Width) plus the purely-visual outskirts (see Outskirt Margin) on each side, whether or not a Deep Water Outskirts Tilemap is actually assigned. Always centered at world origin with 1x1 cell size, so the painted area spans [-HalfWidth, HalfWidth] on X. Useful for anything that needs to keep itself (e.g. CameraController) from going past the outermost painted water's edge. Island generation, pathfinding, and trash spawning all key off Water Tilemap's core bounds instead, unaffected by outskirts.</summary>
+    public float HalfWidth => width / 2f + outskirtMargin;
 
-    /// <summary>Half the map's height in world units. See HalfWidth.</summary>
-    public float HalfHeight => height / 2f;
+    /// <summary>Half the outermost painted water's height in world units. See HalfWidth.</summary>
+    public float HalfHeight => height / 2f + outskirtMargin;
 
     /// <summary>True if cell is water but neither shallow water nor land — i.e. water deep enough that turtles should never be able to path into it (see PathfindingManager's avoidDeepWater). Returns false (treated as safe) if the required tilemaps aren't assigned.</summary>
     public bool IsDeepWater(Vector3Int cell)
@@ -233,6 +244,9 @@ public class IslandGenerator : MonoBehaviour
         waterTilemap.ClearAllTiles();
         sandTilemap.ClearAllTiles();
         if (shallowWaterTilemap != null) shallowWaterTilemap.ClearAllTiles();
+        if (deepWaterOutskirtsTilemap != null) deepWaterOutskirtsTilemap.ClearAllTiles();
+
+        PaintDeepWaterOutskirts();
 
         BoundsInt bounds = new BoundsInt(-width / 2, -height / 2, 0, width, height, 1);
 
@@ -255,5 +269,20 @@ public class IslandGenerator : MonoBehaviour
         if (shallowWaterTilemap != null) shallowWaterTilemap.SetTilesBlock(bounds, shallowWaterTiles);
         sandTilemap.SetTilesBlock(bounds, sandTiles);
         sandTilemap.RefreshAllTiles();
+    }
+
+    /// <summary>Fills a much larger rectangle surrounding the core map (see Outskirt Margin) with plain deep water tiles on Deep Water Outskirts Tilemap, purely so the ocean visually extends past the play area — never read by island generation, pathfinding, or trash spawning, which all only ever look at the core Water Tilemap. No-op if the tilemap isn't assigned or the margin is 0.</summary>
+    private void PaintDeepWaterOutskirts()
+    {
+        if (deepWaterOutskirtsTilemap == null || outskirtMargin <= 0) return;
+
+        int outerWidth = width + outskirtMargin * 2;
+        int outerHeight = height + outskirtMargin * 2;
+        BoundsInt outerBounds = new BoundsInt(-outerWidth / 2, -outerHeight / 2, 0, outerWidth, outerHeight, 1);
+
+        TileBase[] outerWaterTiles = new TileBase[outerWidth * outerHeight];
+        for (int i = 0; i < outerWaterTiles.Length; i++) outerWaterTiles[i] = waterTile;
+
+        deepWaterOutskirtsTilemap.SetTilesBlock(outerBounds, outerWaterTiles);
     }
 }

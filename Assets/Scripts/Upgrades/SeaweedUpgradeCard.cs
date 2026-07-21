@@ -6,7 +6,7 @@ using UnityEngine;
 /// can't hold a serialized scene reference to IslandGenerator — it looks the
 /// scene's instance up directly when applied.
 /// </summary>
-public class SeaweedUpgradeCard : UpgradeCardDefinition, IGrantsFoodItem
+public class SeaweedUpgradeCard : UpgradeCardDefinition
 {
     [SerializeField] private GameObject seaweedNodePrefab;
     [SerializeField] private int nodeCount = 4;
@@ -14,7 +14,7 @@ public class SeaweedUpgradeCard : UpgradeCardDefinition, IGrantsFoodItem
 
     public override void Apply()
     {
-        IslandGenerator islandGenerator = Object.FindFirstObjectByType<IslandGenerator>();
+        IslandGenerator islandGenerator = Object.FindAnyObjectByType<IslandGenerator>();
         SeaweedPatchSpawner.SpawnPatch(islandGenerator, seaweedNodePrefab, nodeCount, patchRadius);
     }
 }

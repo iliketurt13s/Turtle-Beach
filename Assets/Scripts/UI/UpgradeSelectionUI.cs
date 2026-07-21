@@ -36,6 +36,8 @@ public class UpgradeSelectionUI : MonoBehaviour
     [Tooltip("Root object for the whole choice UI (backdrop + cards), toggled active/inactive by BeginStormFadeIn/Select.")]
     [SerializeField] private GameObject root;
     [SerializeField] private Image backdrop;
+    [Tooltip("Text shown while hovering a card's icon, set to that card's DisplayName.")]
+    [SerializeField] private TMP_Text nameText;
     [Tooltip("Bottom-center text shown while hovering a card's icon.")]
     [SerializeField] private TMP_Text descriptionText;
     [Tooltip("The card view slots shown to the player (2 expected).")]
@@ -59,6 +61,7 @@ public class UpgradeSelectionUI : MonoBehaviour
             backdropTargetAlpha = backdrop.color.a;
             SetBackdropAlpha(0f);
         }
+        HideName();
         HideDescription();
     }
 
@@ -66,6 +69,7 @@ public class UpgradeSelectionUI : MonoBehaviour
     public void BeginStormFadeIn()
     {
         if (root != null) root.SetActive(true);
+        HideName();
         HideDescription();
         SetCardSlotsActive(false);
         StartBackdropFade(backdropTargetAlpha);
@@ -120,6 +124,7 @@ public class UpgradeSelectionUI : MonoBehaviour
         pendingOnComplete = onComplete;
         IsActive = true;
         if (root != null) root.SetActive(true);
+        HideName();
         HideDescription();
         StartBackdropFade(backdropTargetAlpha); // normally already fully faded in from BeginStormFadeIn; harmless if so, catches Show() being called without it having run
 
@@ -129,6 +134,20 @@ public class UpgradeSelectionUI : MonoBehaviour
             cardSlots[i].gameObject.SetActive(used);
             if (used) cardSlots[i].Bind(drawn[i], this);
         }
+    }
+
+    /// <summary>Called by a hovered UpgradeCardView to show its name. Mirrors ShowDescription exactly.</summary>
+    public void ShowName(string text)
+    {
+        if (nameText == null) return;
+        nameText.text = text;
+        nameText.gameObject.SetActive(true);
+    }
+
+    /// <summary>Called when the mouse leaves a card's icon.</summary>
+    public void HideName()
+    {
+        if (nameText != null) nameText.gameObject.SetActive(false);
     }
 
     /// <summary>Called by a hovered UpgradeCardView to show its description bottom-center.</summary>
@@ -149,11 +168,11 @@ public class UpgradeSelectionUI : MonoBehaviour
     public void Select(UpgradeCardDefinition card)
     {
         card.Apply();
-        if (card is IGrantsFoodItem) BuildModeController.Instance?.EnsureFoodBuildingPlaced();
         if (!card.Stackable) pickedNonStackable.Add(card);
 
         IsActive = false;
         SetCardSlotsActive(false);
+        HideName();
         HideDescription();
         StartBackdropFade(0f);
 

@@ -46,6 +46,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CoconutUpgradeCard
   displayName: Coconuts
   icon: {fileID: -3806688032669470943, guid: 8dc359e12d9011b43a1b90dede0e4f12, type: 3}
-  description: +5% chance of palm trees dropping coconuts.
+  description: +5% chance of palm trees dropping coconuts. Collected coconuts boost
+    knockback of turtles.
   stackable: 1
   spawnChanceAdded: 0.05

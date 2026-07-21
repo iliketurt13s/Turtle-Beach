@@ -25,7 +25,7 @@ See [GameDesign.md](GameDesign.md) for the game concept. In short: a city-builde
 
 ### Scene-wide singletons, no dependency injection
 
-Turtles, trash, and upgrade cards are all runtime-instantiated (spawned from prefabs, not placed in the scene), so they can't hold a pre-wired scene reference the way hand-placed objects can. Instead, core systems expose themselves as `public static X Instance` set in `Awake`/`OnEnable` and cleared in `OnDestroy`/`OnDisable`, and everything else reaches them via the static accessor: `ResourceManager.Instance`, `UpgradeManager.Instance`, `PathfindingManager.Instance`, `BuildModeController.Instance`, `TurtleNest.Instance`, `FoodBuilding.Instance`. When adding a new manager-style system that runtime-spawned objects need to reach, follow this same pattern rather than introducing a new wiring mechanism.
+Turtles, trash, and upgrade cards are all runtime-instantiated (spawned from prefabs, not placed in the scene), so they can't hold a pre-wired scene reference the way hand-placed objects can. Instead, core systems expose themselves as `public static X Instance` set in `Awake`/`OnEnable` and cleared in `OnDestroy`/`OnDisable`, and everything else reaches them via the static accessor: `ResourceManager.Instance`, `UpgradeManager.Instance`, `PathfindingManager.Instance`, `BuildModeController.Instance`, `TurtleNest.Instance`, `ScoreManager.Instance`. When adding a new manager-style system that runtime-spawned objects need to reach, follow this same pattern rather than introducing a new wiring mechanism.
 
 ### Static flags for cross-system gating
 
@@ -49,11 +49,12 @@ Turtles physically pass through non-interactable buildings but switch onto a ded
 
 New building types and new upgrade cards are meant to be added as prefabs, not new manager code:
 - `BuildableDefinition` (name, resource cost, price-scaling-per-placement) attaches to any building prefab; `BuildModeController` reads it generically to show the ghost, check affordability, and instantiate on placement.
-- `UpgradeCardDefinition` is an abstract base with an `Apply()` override; concrete cards live under `Assets/Scripts/Upgrades/` (e.g. `CritChanceUpgradeCard`, `JellyfishUpgradeCard`) and are referenced by `UpgradeSelectionUI`'s upgrade pool array. Cards that grant a food item implement `IGrantsFoodItem`, which `UpgradeSelectionUI.Select` checks to force-trigger first-time Food Building placement via `BuildModeController.EnsureFoodBuildingPlaced`.
+- `UpgradeCardDefinition` is an abstract base with an `Apply()` override; concrete cards live under `Assets/Scripts/Upgrades/` (e.g. `CritChanceUpgradeCard`, `JellyfishUpgradeCard`) and are referenced by `UpgradeSelectionUI`'s upgrade pool array.
+- `RuneEffect` is the equivalent base for rune buildings (`FlipperRune`, `HardHatRune`): a turtle bumps it repeatedly via `TurtleHeadHitbox` → `TurtleAgent.HandleHeadHit` → `RuneEffect.RegisterHit`, and once one turtle's hit count crosses `hitsRequired` it gets an indefinite buff through the same `ApplyBuff`/`AlreadyHasBuff` override pair new runes must implement.
 
-### Resources: dual routing to Nest vs. Food Building
+### Resources: turtles deliver everything to the Nest; food comes back out as a night buff
 
-`ResourceManager.ResourceType` covers both material resources (Wood, Rock) and food resources (Seaweed, Coconut, JellyfishGuts); `ResourceManager.IsFoodType` is the single source of truth for which is which. `TurtleAgent` carries and delivers the two kinds through fully parallel, independent state (separate carry lists, capacities pooled together, separate delivery coroutines/targets) — materials go to `TurtleNest`, food goes to `FoodBuilding` — so a turtle can carry a mix of both at once.
+`ResourceManager.ResourceType` covers both material resources (Wood, Rock) and food resources (Seaweed, Coconut, JellyfishGuts); `ResourceManager.IsFoodType` is the single source of truth for which is which, but both kinds now flow through the same `TurtleAgent.DeliverCarriedResources` path into the same `ResourceManager`/`TurtleNest` stockpile — there is no separate food building. Food's special handling happens on the way back out: while storming, `TurtleNest.SendWave` periodically pulls stockpiled food via `ResourceManager.Remove` and flies it out to non-parked turtles as a buff (`TurtleNest.SpawnFoodFlight` → `TurtleAgent.ApplySeaweedBuff`/`ApplyCoconutBuff`/`ApplyJellyfishBuff`); if stock runs dry mid-storm the buff is stripped back off via `TurtleNest.ClearFoodBuff`. Read `TurtleNest`'s class-level doc comment before touching food flow.
 
 ### Pathfinding
 
@@ -62,3 +63,11 @@ New building types and new upgrade cards are meant to be added as prefabs, not n
 ### Input handling
 
 Mouse/keyboard polling is spread across a few independent `Update()` loops that coordinate via the static flags above rather than a central input router: `CameraController` (drag-to-pan, scroll-to-zoom), `TurtleSelectionController` (click a turtle to select, click elsewhere to order it), `BuildModeController` (Shift to enter build mode, scroll to cycle buildables, click to place). Click-vs-drag disambiguation (a screen-pixel distance threshold plus `CameraController.WasDragging`) is duplicated between `TurtleSelectionController` and `BuildModeController` rather than shared — keep both in sync if that threshold logic changes.
+
+### Walls: static grid registry, not a component walk
+
+`WallGrid` is a static `Dictionary<Vector3Int, WallAutoTile>` (not a MonoBehaviour singleton) that every placed `WallAutoTile` registers into on placement and unregisters from on removal, so any wall segment can look up its four neighbors and pick the correct auto-tile sprite without holding a tilemap reference or walking the scene.
+
+### Menu → GameScene → GameOver flow
+
+`Assets/Scenes/Menu.unity` and `Assets/Scenes/GameScene.unity` are separate scenes (the old placeholder `SampleScene` is gone) loaded via `SceneManager.LoadScene` by name: `MainMenuController.Play()` loads the gameplay scene, and `GameOverUI.Restart()`/`ReturnToMenu()` reload it or return to the menu once `TurtleNest` is destroyed. `ScoreManager` (same static-`Instance` pattern as the other managers) accrues score on trash kills (`TrashHealth`) and resource deliveries (`TurtleAgent.DeliverCarriedResources`), freezes once `TurtleNest.Instance.IsDestroyed`, and persists a high score to `PlayerPrefs`; `GameOverUI` reads both off it. Both scenes must be present in Build Settings for `SceneManager.LoadScene` to resolve outside the Editor — verify this if scene loads start failing in a build.

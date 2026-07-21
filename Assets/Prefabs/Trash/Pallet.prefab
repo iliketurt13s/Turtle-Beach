@@ -180,8 +180,11 @@ MonoBehaviour:
   directionRandomness: 15
   momentumRampDuration: 1
   startingSpeedMultiplier: 0.3
+  burstIntervalReductionPerRound: 0.025
+  minBurstInterval: 0.4
   rotationForce: 0.5
   waypointArrivalDistance: 0.5
+  extraObstacleClearance: 0
   spriteRenderer: {fileID: 7424312002641498204}
 --- !u!114 &3210905555894835691
 MonoBehaviour:

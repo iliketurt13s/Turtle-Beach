@@ -12,7 +12,7 @@ public class ResourceManager : MonoBehaviour
 {
     public enum ResourceType { Wood, Rock, Seaweed, Coconut, JellyfishGuts }
 
-    /// <summary>True for resource types that route to the Food Building instead of the Nest — see TurtleAgent's dual carry lists.</summary>
+    /// <summary>True for the resource types that get distributed to turtles as a night buff (see TurtleNest.SendWave) rather than only ever being spent on buildings.</summary>
     public static bool IsFoodType(ResourceType type) => type == ResourceType.Seaweed || type == ResourceType.Coconut || type == ResourceType.JellyfishGuts;
 
     [Serializable]
@@ -64,6 +64,17 @@ public class ResourceManager : MonoBehaviour
         if (amount == 0) return;
 
         counts[type] += amount;
+        ResourceChanged?.Invoke(type, counts[type]);
+    }
+
+    public int GetCount(ResourceType type) => counts[type];
+
+    /// <summary>Subtracts amount from type's total (clamped at 0), firing ResourceChanged same as Add/TrySpend. Used by TurtleNest to take stockpiled food back out once it's been handed out to turtles as a night buff.</summary>
+    public void Remove(ResourceType type, int amount)
+    {
+        if (amount <= 0) return;
+
+        counts[type] = Mathf.Max(0, counts[type] - amount);
         ResourceChanged?.Invoke(type, counts[type]);
     }
 

@@ -1025,9 +1025,9 @@ MonoBehaviour:
   aggroDistance: 5
   aggroSuppressionDuration: 3
   nestGuardDistance: 2
+  nestGuardRetryInterval: 2
   carryCapacity: 5
   nestDeliveryRadius: 2
-  foodDeliveryRadius: 3
   harvestPopEffectPrefab: {fileID: 1281859085570913847, guid: 02b374d52c44b044d82031ee491ba044, type: 3}
   deliveryPopEffectPrefab: {fileID: 327863538382705492, guid: 8647bdec2b9a3854a94bc18340f2bc9d, type: 3}
   deliveryStaggerDelay: 0.12
@@ -1042,10 +1042,24 @@ MonoBehaviour:
   frontRightFinRenderer: {fileID: 4588087220294582399}
   flipperFinSpriteRight: {fileID: 7067732897449996879, guid: 264bd69e68971f7498e2d0698e4daefe, type: 3}
   waypointArrivalDistance: 0.4
+  resourceLineOfSightShortcutRange: 2
+  stuckCheckInterval: 4
+  stuckMovementThreshold: 0.3
+  stuckNudgeForce: 0.1
+  showPathGizmo: 1
+  pathGizmoColor: {r: 0, g: 1, b: 1, a: 1}
+  pathGizmoCurrentWaypointColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  pathGizmoDestinationColor: {r: 1, g: 0, b: 1, a: 1}
   harvestRetryInterval: 2
-  returnToFoodRetryInterval: 2
-  foodBuffSpeedEffect: {fileID: 5991004099011295490}
-  maxAppetite: 5
+  seaweedBuffEffects:
+  - {fileID: 5991004099011295490}
+  seaweedSpeedMultiplier: 1.5
+  coconutBuffEffects:
+  - {fileID: 6820033769316843539}
+  coconutKnockbackForce: 1
+  jellyfishBuffEffects:
+  - {fileID: 5096360184225763098}
+  jellyfishBonusDamage: 1
 --- !u!50 &5351350658280270649
 Rigidbody2D:
   serializedVersion: 5
@@ -1443,6 +1457,8 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 5457768337219731582}
+  - {fileID: 413296564952991105}
+  - {fileID: 2134735946705111688}
   - {fileID: 7869513783713649735}
   - {fileID: 896644115997528464}
   - {fileID: 1482162459482606473}
@@ -1590,7 +1606,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6148147576897388155, guid: 0d65e94f97da5aa4a9d8a4e1d75b743e, type: 3}
       propertyPath: m_Name
-      value: TurtlePush (1)
+      value: TurtlePushR
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -1657,7 +1673,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7651189067617552302, guid: 8f3190b599943304aaedbdaf7a4d82c3, type: 3}
       propertyPath: m_Name
-      value: TurtleSpeed
+      value: SeaweedBuff
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -1786,7 +1802,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6148147576897388155, guid: 0d65e94f97da5aa4a9d8a4e1d75b743e, type: 3}
       propertyPath: m_Name
-      value: TurtlePush
+      value: TurtlePushL
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -1802,4 +1818,138 @@ Transform:
 ParticleSystem:
   m_CorrespondingSourceObject: {fileID: 7370436427028963381, guid: 0d65e94f97da5aa4a9d8a4e1d75b743e, type: 3}
   m_PrefabInstance: {fileID: 1822856222202471815}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1001 &2670512239808624901
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 610938215199282303}
+    m_Modifications:
+    - target: {fileID: 48735743073263001, guid: dc747c7ff5aaa7e4e87762c119e4a7dd, type: 3}
+      propertyPath: m_Name
+      value: CoconutBuff
+      objectReference: {fileID: 0}
+    - target: {fileID: 2356442201779190916, guid: dc747c7ff5aaa7e4e87762c119e4a7dd, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0.44
+      objectReference: {fileID: 0}
+    - target: {fileID: 2356442201779190916, guid: dc747c7ff5aaa7e4e87762c119e4a7dd, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2356442201779190916, guid: dc747c7ff5aaa7e4e87762c119e4a7dd, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2356442201779190916, guid: dc747c7ff5aaa7e4e87762c119e4a7dd, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2356442201779190916, guid: dc747c7ff5aaa7e4e87762c119e4a7dd, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2356442201779190916, guid: dc747c7ff5aaa7e4e87762c119e4a7dd, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2356442201779190916, guid: dc747c7ff5aaa7e4e87762c119e4a7dd, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2356442201779190916, guid: dc747c7ff5aaa7e4e87762c119e4a7dd, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2356442201779190916, guid: dc747c7ff5aaa7e4e87762c119e4a7dd, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2356442201779190916, guid: dc747c7ff5aaa7e4e87762c119e4a7dd, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: dc747c7ff5aaa7e4e87762c119e4a7dd, type: 3}
+--- !u!4 &413296564952991105 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 2356442201779190916, guid: dc747c7ff5aaa7e4e87762c119e4a7dd, type: 3}
+  m_PrefabInstance: {fileID: 2670512239808624901}
+  m_PrefabAsset: {fileID: 0}
+--- !u!198 &6820033769316843539 stripped
+ParticleSystem:
+  m_CorrespondingSourceObject: {fileID: 8910987795127646486, guid: dc747c7ff5aaa7e4e87762c119e4a7dd, type: 3}
+  m_PrefabInstance: {fileID: 2670512239808624901}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1001 &3625556254493179425
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 610938215199282303}
+    m_Modifications:
+    - target: {fileID: 1147974149657449908, guid: 5e92c85fe38badf439bbb5036a96e59a, type: 3}
+      propertyPath: m_Name
+      value: JellyfishBuff
+      objectReference: {fileID: 0}
+    - target: {fileID: 3454414007612437673, guid: 5e92c85fe38badf439bbb5036a96e59a, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0.2
+      objectReference: {fileID: 0}
+    - target: {fileID: 3454414007612437673, guid: 5e92c85fe38badf439bbb5036a96e59a, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3454414007612437673, guid: 5e92c85fe38badf439bbb5036a96e59a, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3454414007612437673, guid: 5e92c85fe38badf439bbb5036a96e59a, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3454414007612437673, guid: 5e92c85fe38badf439bbb5036a96e59a, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3454414007612437673, guid: 5e92c85fe38badf439bbb5036a96e59a, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3454414007612437673, guid: 5e92c85fe38badf439bbb5036a96e59a, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3454414007612437673, guid: 5e92c85fe38badf439bbb5036a96e59a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3454414007612437673, guid: 5e92c85fe38badf439bbb5036a96e59a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3454414007612437673, guid: 5e92c85fe38badf439bbb5036a96e59a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 5e92c85fe38badf439bbb5036a96e59a, type: 3}
+--- !u!4 &2134735946705111688 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 3454414007612437673, guid: 5e92c85fe38badf439bbb5036a96e59a, type: 3}
+  m_PrefabInstance: {fileID: 3625556254493179425}
+  m_PrefabAsset: {fileID: 0}
+--- !u!198 &5096360184225763098 stripped
+ParticleSystem:
+  m_CorrespondingSourceObject: {fileID: 8424397213718442299, guid: 5e92c85fe38badf439bbb5036a96e59a, type: 3}
+  m_PrefabInstance: {fileID: 3625556254493179425}
   m_PrefabAsset: {fileID: 0}

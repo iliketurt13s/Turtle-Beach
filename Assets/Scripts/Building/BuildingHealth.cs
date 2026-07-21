@@ -16,7 +16,7 @@ public class BuildingHealth : MonoBehaviour
     /// <summary>Every currently-enabled building, so e.g. Iron Ingot can pick one at random.</summary>
     public static IReadOnlyList<BuildingHealth> AllBuildings => allBuildings;
 
-    /// <summary>Raised right before a building is destroyed by reaching zero health, while its GameObject/components are still valid — lets e.g. FoodBuilding notice its own destruction and remember where to rebuild.</summary>
+    /// <summary>Raised right before a building is destroyed by reaching zero health, while its GameObject/components are still valid — lets other systems react to exactly which building was lost.</summary>
     public static event Action<BuildingHealth> Destroyed;
 
     [SerializeField] private int maxHealth = 10;
@@ -27,7 +27,7 @@ public class BuildingHealth : MonoBehaviour
 
     public bool IsInteractable => isInteractable;
 
-    /// <summary>Overrides the Inspector-authored value at runtime — e.g. FoodBuilding forces itself non-interactable in code (its feeding is proximity-based, never an explicit player order), so that stays true regardless of what a prefab's checkbox happens to be set to.</summary>
+    /// <summary>Overrides the Inspector-authored value at runtime — e.g. a proximity-buff building can force itself non-interactable in code (never an explicit player order), so that stays true regardless of what a prefab's checkbox happens to be set to.</summary>
     public void SetInteractable(bool value) => isInteractable = value;
 
     private int currentHealth;

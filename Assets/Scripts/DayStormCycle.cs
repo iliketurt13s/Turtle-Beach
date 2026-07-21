@@ -12,11 +12,17 @@ using UnityEngine;
 /// </summary>
 public class DayStormCycle : MonoBehaviour
 {
+    /// <summary>Scene-wide singleton (mirrors ResourceManager/PathfindingManager/etc.) so e.g. TrashAgent can read CurrentRound — an instance property, unlike the static IsStorming/StormStarted/StormEnded above — without a serialized scene reference.</summary>
+    public static DayStormCycle Instance { get; private set; }
+
     /// <summary>True during the storm phase; polled by TrashAgent to know whether to burst-move.</summary>
     public static bool IsStorming { get; private set; }
 
     /// <summary>Raised the instant a storm ends (right after buildings are healed, right before the round counter increments). Lets temporary per-storm effects (e.g. Iron Ingot's building health buff) know exactly when to revert.</summary>
     public static event Action StormEnded;
+
+    /// <summary>Raised the instant a storm begins (right after IsStorming flips true, before the upgrade UI's backdrop fade-in). Lets dusk-triggered effects (e.g. TurtleNest re-arming its per-food-type distribution cooldowns) fire at the exact moment night falls, ahead of any turtle's own storm-transition logic that same frame.</summary>
+    public static event Action StormStarted;
 
     [Header("References")]
     [SerializeField] private IslandGenerator islandGenerator;
@@ -31,8 +37,10 @@ public class DayStormCycle : MonoBehaviour
     [Header("Trash Scaling")]
     [Tooltip("Total plastic 'rating' budget spawned on round 1. Each piece of trash consumes an amount of this budget equal to its own TrashDefinition.Rating, so this controls both how much trash appears and, once the budget is large enough, whether higher-rated (harder) plastic types can afford to show up at all.")]
     [SerializeField] private float baseRatingBudget = 8f;
-    [Tooltip("Multiplier applied to the rating budget every round, so the budget grows exponentially rather than linearly. E.g. 1.15 means each round's budget is 15% bigger than the last.")]
-    [SerializeField] private float ratingGrowthPerRound = 1.15f;
+    [Tooltip("Flat amount added to the rating budget every round, on top of the exponential growth below. Makes early rounds ramp up noticeably instead of the first few rounds barely differing from round 1 (a pure percentage is a tiny absolute amount when the budget is still small).")]
+    [SerializeField] private float linearRatingPerRound = 2f;
+    [Tooltip("Multiplier applied to the rating budget every round, compounding on top of the linear growth above. Kept modest (e.g. 1.08 = 8%/round) rather than large, since compounding on an already-growing budget is what makes a pure exponential curve feel fine for a while and then suddenly unbeatable — the linear term above carries most of the early-game ramp so this doesn't have to.")]
+    [SerializeField] private float ratingGrowthPerRound = 1.08f;
 
     public int CurrentRound { get; private set; } = 1;
 
@@ -41,12 +49,19 @@ public class DayStormCycle : MonoBehaviour
 
     private void Awake()
     {
+        Instance = this;
+
         // IsStorming is static, so if the Editor's Domain Reload is disabled it
         // survives across stopping and re-entering Play mode. Force a clean
         // state here rather than relying on its default value.
         IsStorming = false;
         phaseTimer = 0f;
         awaitingUpgradeChoice = false;
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
     }
 
     private void OnEnable()
@@ -69,6 +84,7 @@ public class DayStormCycle : MonoBehaviour
         {
             phaseTimer -= dayDuration;
             IsStorming = true;
+            StormStarted?.Invoke();
             upgradeSelectionUI?.BeginStormFadeIn();
         }
         else if (IsStorming && !trashSpawner.AnyTrashAlive())
@@ -108,12 +124,7 @@ public class DayStormCycle : MonoBehaviour
 
     private void BeginDay()
     {
-        if (FoodBuilding.PendingRebuildPosition.HasValue && FoodBuilding.Instance == null)
-        {
-            BuildModeController.Instance?.RebuildFoodBuildingAt(FoodBuilding.PendingRebuildPosition.Value);
-        }
-
-        float ratingBudget = baseRatingBudget * Mathf.Pow(ratingGrowthPerRound, CurrentRound - 1);
+        float ratingBudget = baseRatingBudget * Mathf.Pow(ratingGrowthPerRound, CurrentRound - 1) + linearRatingPerRound * (CurrentRound - 1);
         trashSpawner.SpawnRound(ratingBudget);
     }
 }

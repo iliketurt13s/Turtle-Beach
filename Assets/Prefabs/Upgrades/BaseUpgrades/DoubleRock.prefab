@@ -46,6 +46,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::RockDoubleDropUpgradeCard
   displayName: More Rocks
   icon: {fileID: -1372582992287840277, guid: 008e9e33bc12ef74c8d5a85c981882dd, type: 3}
-  description: Chance for rocks to drop two stone instead of one.
+  description: + 20% chance for rocks to drop two stone instead of one.
   stackable: 1
   doubleDropChanceAdded: 0.2

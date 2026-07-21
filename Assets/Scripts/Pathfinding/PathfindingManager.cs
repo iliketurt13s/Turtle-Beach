@@ -10,12 +10,16 @@ using UnityEngine.Tilemaps;
 /// avoided, since turtles already pass through non-interactable ones and
 /// trash is meant to ram walls. Optionally (see FindPath's avoidDeepWater)
 /// also avoids every deep-water cell, for turtles specifically. The
-/// ResourceNode-derived part of the blocked-cell set is rebuilt fresh on every
-/// call rather than kept incrementally in sync: calls are infrequent (only on
-/// turtle order-changes and once per trash spawn, never per-frame) and node
-/// counts are modest, so this is cheap and avoids invalidation bugs. The
-/// deep-water part is cached instead (see deepWaterCells) since, unlike
-/// ResourceNode positions, it never changes at runtime.
+/// ResourceNode-derived part of the blocked-cell set (BuildBlockedCells) is
+/// rebuilt fresh on every call — both FindPath's and HasLineOfSight's, the
+/// latter now also keying off it (see SegmentCrossesResourceNodeCell) rather
+/// than raw collider shapes, so a mover's line-of-sight shortcut always
+/// agrees with what a full path would actually allow — rather than kept
+/// incrementally in sync: node counts are modest, so rebuilding is cheap
+/// even at HasLineOfSight's per-frame call rate during an aggro chase, and
+/// this avoids invalidation bugs. The deep-water part is cached instead (see
+/// deepWaterCells) since, unlike ResourceNode positions, it never changes at
+/// runtime.
 /// </summary>
 public class PathfindingManager : MonoBehaviour
 {
@@ -60,8 +64,8 @@ public class PathfindingManager : MonoBehaviour
 
     private void InvalidateDeepWaterCache() => deepWaterCells = null;
 
-    /// <summary>Finds a world-space waypoint path from start to goal avoiding nature, and — if avoidDeepWater is true — every deep-water cell too. Turtles always pass true (see TurtleAgent.BeginPathTo) so they can never path further out than the shallows; trash leaves this false since it must cross open water to reach shore. Turtles also pass allowDiagonalSqueeze true — they're small enough to cut a corner formed by two nature obstacles (e.g. moving diagonally between two resource nodes that are themselves diagonal from each other, or reaching one nestled behind such a pair) — but this never lets a path cut a corner across deep water regardless, since that's a hard depth limit, not a sizing issue; trash leaves it false, keeping the strict corner-cutting guard. Returns null if unavailable/unreachable (callers should fall back to a direct route only when avoidDeepWater is false — see BeginPathTo), or an empty list if no intermediate waypoints are needed.</summary>
-    public List<Vector3> FindPath(Vector3 start, Vector3 goal, bool avoidDeepWater = false, bool allowDiagonalSqueeze = false)
+    /// <summary>Finds a world-space waypoint path from start to goal avoiding nature, and — if avoidDeepWater is true — every deep-water cell too. Turtles always pass true (see TurtleAgent.BeginPathTo) so they can never path further out than the shallows; trash leaves this false since it must cross open water to reach shore. Turtles also pass allowDiagonalSqueeze true — they're small enough to cut a corner formed by two nature obstacles (e.g. moving diagonally between two resource nodes that are themselves diagonal from each other, or reaching one nestled behind such a pair) — but this never lets a path cut a corner across deep water regardless, since that's a hard depth limit, not a sizing issue; trash leaves it false, keeping the strict corner-cutting guard. extraObstacleInflation adds on top of the shared obstacleInflationRadius for this call only (e.g. a bigger piece of trash passing its own size so its route avoids gaps only wide enough for something smaller) — most callers leave it 0. Returns null if unavailable/unreachable (callers should fall back to a direct route only when avoidDeepWater is false — see BeginPathTo), or an empty list if no intermediate waypoints are needed.</summary>
+    public List<Vector3> FindPath(Vector3 start, Vector3 goal, bool avoidDeepWater = false, bool allowDiagonalSqueeze = false, int extraObstacleInflation = 0)
     {
         Tilemap grid = islandGenerator != null ? islandGenerator.WaterTilemap : null;
         if (grid == null) return null;
@@ -69,7 +73,7 @@ public class PathfindingManager : MonoBehaviour
         Vector3Int startCell = grid.WorldToCell(start);
         Vector3Int goalCell = grid.WorldToCell(goal);
 
-        HashSet<Vector3Int> blocked = BuildBlockedCells(grid);
+        HashSet<Vector3Int> blocked = BuildBlockedCells(grid, obstacleInflationRadius + Mathf.Max(0, extraObstacleInflation));
         HashSet<Vector3Int> deepWater = avoidDeepWater ? GetDeepWaterCells(grid) : null;
         if (deepWater != null) blocked.UnionWith(deepWater);
 
@@ -100,19 +104,29 @@ public class PathfindingManager : MonoBehaviour
     /// <summary>
     /// True if no nature obstacle sits between from and to AND the straight
     /// segment between them never dips into deep water — used so a mover
-    /// chasing a visible target (e.g. a turtle aggro-chasing trash) can skip
-    /// pathfinding entirely and just steer straight at it. The deep-water
+    /// chasing a visible target (e.g. a turtle aggro-chasing trash, or one
+    /// closing the last couple tiles on a resource node it's harvesting) can
+    /// skip pathfinding entirely and just steer straight at it. The deep-water
     /// check matters even when neither endpoint itself is in deep water: two
     /// shallow-water/shore points on either side of a bay can still have open
     /// ocean directly between them, and without this a turtle would swim
     /// straight across it to close the gap — this is the same "never cross
     /// open ocean" rule FindPath's avoidDeepWater already enforces for normal
     /// pathfinding, just also applied to this direct-steer shortcut. The
-    /// obstacle check itself ignores everything except ResourceNode colliders
-    /// (the turtle's/target's own colliders, buildings, other trash, etc.
-    /// never block line of sight).
+    /// obstacle check blocks on the same whole-cell model FindPath's own
+    /// BuildBlockedCells uses (see SegmentCrossesResourceNodeCell) rather than
+    /// the ResourceNode colliders' actual (usually much smaller) physical
+    /// shapes — otherwise a straight line can thread a "gap" between two
+    /// adjacent nodes' real colliders that's narrower than a full cell, which
+    /// a mover respecting the grid could never actually fit through, letting
+    /// it weave somewhere FindPath itself would have routed around.
+    /// Everything else (the turtle's/target's own colliders, buildings, other
+    /// trash, etc.) never blocks line of sight. ignoreTarget optionally
+    /// exempts one specific ResourceNode's own cell from that check — needed
+    /// when to itself is a ResourceNode, since the line would otherwise always
+    /// end inside the destination's own cell and self-block.
     /// </summary>
-    public bool HasLineOfSight(Vector3 from, Vector3 to)
+    public bool HasLineOfSight(Vector3 from, Vector3 to, Transform ignoreTarget = null)
     {
         Vector2 origin = from;
         Vector2 target = to;
@@ -120,13 +134,32 @@ public class PathfindingManager : MonoBehaviour
         float distance = offset.magnitude;
         if (distance < 0.0001f) return true;
 
-        RaycastHit2D[] hits = Physics2D.RaycastAll(origin, offset / distance, distance);
-        foreach (RaycastHit2D hit in hits)
-        {
-            if (hit.collider != null && hit.collider.GetComponentInParent<ResourceNode>() != null) return false;
-        }
+        if (SegmentCrossesResourceNodeCell(origin, offset, distance, ignoreTarget)) return false;
 
         return !SegmentCrossesDeepWater(origin, offset, distance);
+    }
+
+    /// <summary>Samples the origin→(origin+offset) segment roughly once per grid cell (same technique as SegmentCrossesDeepWater), true if any sampled point's cell currently has a ResourceNode in it (per BuildBlockedCells — the whole cell, inflated the same as FindPath's obstacleInflationRadius, not just wherever that node's own collider happens to sit). ignoreTarget optionally exempts one specific node's own cell (see HasLineOfSight).</summary>
+    private bool SegmentCrossesResourceNodeCell(Vector2 origin, Vector2 offset, float distance, Transform ignoreTarget)
+    {
+        Tilemap grid = islandGenerator != null ? islandGenerator.WaterTilemap : null;
+        if (grid == null) return false;
+
+        HashSet<Vector3Int> nodeCells = BuildBlockedCells(grid, obstacleInflationRadius);
+        Vector3Int? ignoreCell = ignoreTarget != null ? grid.WorldToCell(ignoreTarget.position) : (Vector3Int?)null;
+
+        float cellSize = Mathf.Max(grid.cellSize.x, grid.cellSize.y, 0.01f);
+        int steps = Mathf.Max(1, Mathf.CeilToInt(distance / cellSize));
+
+        for (int i = 0; i <= steps; i++)
+        {
+            Vector2 point = origin + offset * (i / (float)steps);
+            Vector3Int cell = grid.WorldToCell(point);
+            if (ignoreCell.HasValue && cell == ignoreCell.Value) continue;
+            if (nodeCells.Contains(cell)) return true;
+        }
+
+        return false;
     }
 
     /// <summary>Samples the origin→(origin+offset) segment roughly once per water cell, so a straight-line shortcut can never cut across a stretch of deep water lying between two otherwise-valid endpoints.</summary>
@@ -147,7 +180,7 @@ public class PathfindingManager : MonoBehaviour
         return false;
     }
 
-    private HashSet<Vector3Int> BuildBlockedCells(Tilemap grid)
+    private HashSet<Vector3Int> BuildBlockedCells(Tilemap grid, int inflationRadius)
     {
         HashSet<Vector3Int> blocked = new HashSet<Vector3Int>();
 
@@ -158,11 +191,11 @@ public class PathfindingManager : MonoBehaviour
             Vector3Int cell = grid.WorldToCell(node.transform.position);
             blocked.Add(cell);
 
-            if (obstacleInflationRadius <= 0) continue;
+            if (inflationRadius <= 0) continue;
 
-            for (int dx = -obstacleInflationRadius; dx <= obstacleInflationRadius; dx++)
+            for (int dx = -inflationRadius; dx <= inflationRadius; dx++)
             {
-                for (int dy = -obstacleInflationRadius; dy <= obstacleInflationRadius; dy++)
+                for (int dy = -inflationRadius; dy <= inflationRadius; dy++)
                 {
                     blocked.Add(new Vector3Int(cell.x + dx, cell.y + dy, cell.z));
                 }

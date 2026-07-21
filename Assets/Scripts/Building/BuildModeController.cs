@@ -13,9 +13,6 @@ public class BuildModeController : MonoBehaviour
 {
     public static bool IsActive { get; private set; }
 
-    /// <summary>True while the player is locked into an uninterruptible placement (see EnsureFoodBuildingPlaced) — Shift can't cancel it and scroll can't cycle away from it. CameraController checks this to let zoom through even though IsActive is also true.</summary>
-    public static bool IsForced { get; private set; }
-
     /// <summary>Scene-wide singleton so upgrade cards (which live as prefab assets, not scene objects) can call Unlock without a serialized scene reference.</summary>
     public static BuildModeController Instance { get; private set; }
 
@@ -29,16 +26,15 @@ public class BuildModeController : MonoBehaviour
     [Tooltip("Buildables placeable from game start (e.g. just the Turtle Bed). Everything else in Buildables begins locked; call Unlock to make more available later, e.g. from an upgrade card.")]
     [SerializeField] private BuildableDefinition[] initiallyUnlocked;
 
-    [Tooltip("The Food Building's buildable entry, forced into an uninterruptible placement the first time a food-granting upgrade is picked with none yet placed (see EnsureFoodBuildingPlaced). Deliberately left out of Initially Unlocked/normal scroll-cycling.")]
-    [SerializeField] private BuildableDefinition foodHoldingBuildable;
-
     private HashSet<BuildableDefinition> unlockedBuildables;
 
     private BuildableDefinition selectedBuildable;
     private int selectedIndex;
 
-    /// <summary>Non-null while locked into placing this specific buildable — see EnsureFoodBuildingPlaced/Update/TryPlace.</summary>
-    private BuildableDefinition forcedBuildable;
+    /// <summary>The Buildables entry with a TurtleBed component, found once in Awake — null if none is configured. Cached so UpdateTurtleBedAvailability doesn't need to scan the whole array every frame.</summary>
+    private BuildableDefinition turtleBedBuildable;
+    /// <summary>Last TurtleBed.AllBeds.Count seen by UpdateTurtleBedAvailability, so it only does work on the frame the count actually changes (placement or destruction) rather than every frame. -1 forces a check on the very first Update.</summary>
+    private int lastKnownBedCount = -1;
 
     [Header("Ghost")]
     [SerializeField, Range(0f, 1f)] private float ghostAlpha = 0.5f;
@@ -63,7 +59,7 @@ public class BuildModeController : MonoBehaviour
     [Header("Placement Restrictions")]
     [Tooltip("Tiles, measured from the map center (where the nest always sits), kept clear of buildings.")]
     [SerializeField, Range(0, 20)] private int minDistanceFromNest = 3;
-    [Tooltip("Maximum number of Turtle Beds that can be placed at once. Once reached, placing another is blocked (ghost tints invalid, click does nothing) — it stays selectable/cyclable in build mode, it just can't be placed.")]
+    [Tooltip("Maximum number of Turtle Beds that can be placed at once. Once reached, Turtle Bed is pulled out of the selectable/cyclable pool entirely (see UpdateTurtleBedAvailability) until a bed is destroyed drops the count back under this.")]
     [SerializeField, Min(0)] private int maxTurtleBeds = 5;
 
     private Camera cam;
@@ -100,18 +96,30 @@ public class BuildModeController : MonoBehaviour
             foreach (BuildableDefinition b in initiallyUnlocked) unlockedBuildables.Add(b);
         }
 
+        turtleBedBuildable = FindTurtleBedBuildable();
+
         BuildGhost();
         SetSelectedIndex(0);
         SetGhostVisible(false);
+
+        BuildableDefinition.PriceRolledBack += HandlePriceRolledBack;
     }
 
     private void OnDestroy()
     {
+        BuildableDefinition.PriceRolledBack -= HandlePriceRolledBack;
+
         if (Instance == this) Instance = null;
         if (ghostObject != null) Destroy(ghostObject);
     }
 
-    /// <summary>Resets every configured buildable's price scaling back to its Inspector-authored base (see BuildableDefinition.ResetPriceScaling) — buildables and foodHoldingBuildable are separate fields, so both are covered here even though foodHoldingBuildable is deliberately left out of normal scroll-cycling.</summary>
+    /// <summary>Keeps the ghost's displayed cost numbers in sync if the buildable a placed instance just rolled back the price of (see BuildableDefinition.RegisterDestruction) happens to be the one currently selected.</summary>
+    private void HandlePriceRolledBack(BuildableDefinition definition)
+    {
+        if (definition == selectedBuildable) RefreshCostText();
+    }
+
+    /// <summary>Resets every configured buildable's price scaling back to its Inspector-authored base (see BuildableDefinition.ResetPriceScaling).</summary>
     private void ResetAllPriceScaling()
     {
         if (buildables != null)
@@ -121,8 +129,6 @@ public class BuildModeController : MonoBehaviour
                 if (b != null) b.ResetPriceScaling();
             }
         }
-
-        if (foodHoldingBuildable != null) foodHoldingBuildable.ResetPriceScaling();
     }
 
     /// <summary>Selects a buildable by index, e.g. from a future selection UI or scroll-wheel cycling. Wraps out-of-range indices in either direction, skipping any buildable not yet unlocked.</summary>
@@ -155,42 +161,60 @@ public class BuildModeController : MonoBehaviour
     /// <summary>True if buildable is currently placeable — either authored in Initially Unlocked or unlocked mid-run via Unlock. Lets an upgrade card gate itself behind a specific building already being unlocked (see IRequiresBuilding), so "branch" upgrades only start appearing once their building does.</summary>
     public bool IsUnlocked(BuildableDefinition buildable) => buildable != null && unlockedBuildables.Contains(buildable);
 
-    /// <summary>Called by UpgradeSelectionUI whenever a food-granting card (see IGrantsFoodItem) is picked. No-ops if a Food Building already exists, one is already being forced, or none is configured. Otherwise unlocks and force-selects it, and locks the player into build mode until it's placed — Shift can't cancel out and scroll can't cycle to anything else (see Update/TryPlace).</summary>
-    public void EnsureFoodBuildingPlaced()
+    private BuildableDefinition FindTurtleBedBuildable()
     {
-        if (FoodBuilding.Instance != null || forcedBuildable != null || foodHoldingBuildable == null) return;
+        if (buildables == null) return null;
 
-        Unlock(foodHoldingBuildable);
-        forcedBuildable = foodHoldingBuildable;
-        selectedBuildable = foodHoldingBuildable;
-        selectedIndex = System.Array.IndexOf(buildables, foodHoldingBuildable);
-        RefreshGhostSprite();
+        foreach (BuildableDefinition b in buildables)
+        {
+            if (b != null && b.GetComponent<TurtleBed>() != null) return b;
+        }
 
-        IsForced = true;
-        IsActive = true;
-        SetGhostVisible(true);
+        return null;
     }
 
-    /// <summary>Re-instantiates the Food Building at position at no resource cost, bypassing normal placement validity checks — called by DayStormCycle at the start of a new day when FoodBuilding.PendingRebuildPosition shows trash destroyed it overnight.</summary>
-    public void RebuildFoodBuildingAt(Vector3 position)
+    /// <summary>
+    /// Pulls Turtle Bed out of the selectable/cyclable pool the instant Max
+    /// Turtle Beds is reached, and puts it back — at whatever price it's
+    /// scaled to (see BuildableDefinition.RegisterDestruction, which already
+    /// rolls that price back down when a bed is destroyed) — the instant a
+    /// bed count drop takes it back under the cap. Polled once a frame
+    /// (cheap: just an int comparison) rather than wired to a specific
+    /// destruction event, since a bed can disappear by several different
+    /// means (BuildingHealth trash damage, ...) and this way doesn't need to
+    /// know about any of them.
+    /// </summary>
+    private void UpdateTurtleBedAvailability()
     {
-        if (foodHoldingBuildable == null) return;
+        if (turtleBedBuildable == null || maxTurtleBeds <= 0) return;
 
-        Instantiate(foodHoldingBuildable.gameObject, position, Quaternion.identity);
+        int bedCount = TurtleBed.AllBeds.Count;
+        if (bedCount == lastKnownBedCount) return;
+        lastKnownBedCount = bedCount;
+
+        bool shouldBeUnlocked = bedCount < maxTurtleBeds;
+        bool currentlyUnlocked = unlockedBuildables.Contains(turtleBedBuildable);
+        if (shouldBeUnlocked == currentlyUnlocked) return;
+
+        if (shouldBeUnlocked)
+        {
+            unlockedBuildables.Add(turtleBedBuildable);
+        }
+        else
+        {
+            unlockedBuildables.Remove(turtleBedBuildable);
+            // Ghost was showing the now-locked Turtle Bed — cycle forward to
+            // whatever's next available instead of leaving it selected on
+            // something the player can no longer place.
+            if (selectedBuildable == turtleBedBuildable) SetSelectedIndex(selectedIndex);
+        }
     }
 
     private void Update()
     {
-        if (UpgradeSelectionUI.IsActive) return;
+        UpdateTurtleBedAvailability();
 
-        if (forcedBuildable != null)
-        {
-            // Locked into placing forcedBuildable — Shift can't cancel out of
-            // build mode and scroll can't cycle to anything else.
-            UpdateGhostPosition();
-            HandleClick();
-            return;
-        }
+        if (UpgradeSelectionUI.IsActive) return;
 
         Keyboard keyboard = Keyboard.current;
         bool shiftHeld = keyboard != null && keyboard.shiftKey.isPressed;
@@ -381,23 +405,21 @@ public class BuildModeController : MonoBehaviour
 
         GameObject instance = Instantiate(selectedBuildable.gameObject, cellCenter, Quaternion.identity);
 
+        // Instantiate gives this placed instance its own separate
+        // BuildableDefinition clone, so link it back to the array entry
+        // (selectedBuildable) that actually prices this buildable, so
+        // destroying it can roll that price back down (see BuildableDefinition.OnDestroy).
+        BuildableDefinition instanceDefinition = instance.GetComponent<BuildableDefinition>();
+        if (instanceDefinition != null) instanceDefinition.LinkToMaster(selectedBuildable);
+
         WallAutoTile autoTile = instance.GetComponent<WallAutoTile>();
         if (autoTile != null) autoTile.Initialize(currentCell);
 
         TurtleBed turtleBed = instance.GetComponent<TurtleBed>();
         if (turtleBed != null) turtleBed.Initialize(islandGenerator);
-
-        if (forcedBuildable != null && selectedBuildable == forcedBuildable)
-        {
-            // Placed — release the lock. The very next Update() falls through
-            // to normal Shift-driven logic and hides the ghost immediately if
-            // Shift isn't currently held.
-            forcedBuildable = null;
-            IsForced = false;
-        }
     }
 
-    /// <summary>True if a building can be placed on this cell: on land, far enough from the nest, unoccupied, and — for a Turtle Bed specifically — under the Max Turtle Beds cap.</summary>
+    /// <summary>True if a building can be placed on this cell: on land, far enough from the nest, unoccupied, and — for a Turtle Bed specifically — under the Max Turtle Beds cap. This last check is normally already unreachable for Turtle Bed once UpdateTurtleBedAvailability locks it back out of selection at the cap; kept as a belt-and-suspenders guard against a stray one-frame gap between the count changing and the next Update's poll.</summary>
     private bool IsPlacementValid(Vector3Int cell, Vector3 cellCenter, Tilemap sand)
     {
         if (!sand.HasTile(cell)) return false;

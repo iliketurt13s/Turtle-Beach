@@ -25,13 +25,19 @@ public class TrashSpawner : MonoBehaviour
     [SerializeField, Min(0f)] private float smallTrashBias = 1.5f;
 
     [Header("Clumping")]
-    [Tooltip("How many loose clumps the round's trash is split across.")]
-    [SerializeField] private int clusterCount = 3;
+    [Tooltip("Fewest loose clumps a round's trash can be split across (inclusive). Rolled fresh per round between this and Max Cluster Count.")]
+    [SerializeField, Min(1)] private int minClusterCount = 2;
+    [Tooltip("Most loose clumps a round's trash can be split across (inclusive). Rolled fresh per round between Min Cluster Count and this.")]
+    [SerializeField, Min(1)] private int maxClusterCount = 4;
     [Tooltip("How far (in tiles) a piece of trash may land from its cluster's center cell.")]
     [SerializeField, Range(0f, 10f)] private float clusterRadius = 3f;
+    [Tooltip("Preferred distance (in tiles) between cluster centers — a soft target, not a hard minimum: a candidate closer than this is penalized (see Separation Bias), not rejected outright, so clusters usually spread out to about this far apart but can still occasionally land closer.")]
+    [SerializeField, Min(0f)] private float preferredClusterSeparation = 4f;
+    [Tooltip("How strongly a cluster center candidate is penalized for falling short of Preferred Cluster Separation, relative to how strongly candidates are already preferred for landing close to the island. 0 = separation is ignored entirely (purely closest-to-island, as if this feature didn't exist). Higher values favor spacing clusters out more consistently, but a closer candidate can still win a given round if the alternatives sampled that round are all notably worse for island-closeness — it's a bias, not a wall.")]
+    [SerializeField, Min(0f)] private float separationBias = 1f;
     [Tooltip("Random offset (world units) applied within each cell so trash doesn't look grid-snapped.")]
     [SerializeField, Range(0f, 0.5f)] private float positionJitter = 0.3f;
-    [Tooltip("How many random candidate cells are sampled per cluster center, keeping whichever lands closest to the island (map center). Higher = cluster centers land closer to shore more consistently; 1 = uniformly random across all open water.")]
+    [Tooltip("How many random candidate cells are sampled per cluster center, keeping whichever scores best on a combination of landing close to the island and satisfying Preferred Cluster Separation from every already-placed center (see PickClusterCenter). Higher = more consistent results; 1 = uniformly random across all open water.")]
     [SerializeField, Range(1, 10)] private int closenessBiasSamples = 4;
 
     [Header("Seed")]
@@ -74,11 +80,12 @@ public class TrashSpawner : MonoBehaviour
         Debug.Log($"TrashSpawner: seed = {seed}, rating budget = {ratingBudget} (check 'Use Fixed Seed' and set this value to reproduce this trash layout)");
         System.Random rng = new System.Random(seed);
 
-        int clusters = Mathf.Max(1, Mathf.Min(clusterCount, waterCells.Count));
+        int rolledClusterCount = rng.Next(minClusterCount, Mathf.Max(minClusterCount, maxClusterCount) + 1);
+        int clusters = Mathf.Max(1, Mathf.Min(rolledClusterCount, waterCells.Count));
         List<Vector3Int> clusterCenters = new List<Vector3Int>();
         for (int i = 0; i < clusters; i++)
         {
-            clusterCenters.Add(PickCellBiasedTowardIsland(waterCells, rng));
+            clusterCenters.Add(PickClusterCenter(waterCells, clusterCenters, rng));
         }
 
         Transform nestTarget = islandGenerator.TurtleNestTransform;
@@ -133,29 +140,59 @@ public class TrashSpawner : MonoBehaviour
     }
 
     /// <summary>
-    /// Samples ClosenessBiasSamples random cells and keeps whichever is
-    /// closest to the map center (a stand-in for "closest to the island",
-    /// since the island is always centered at the origin). Sampling just 1
-    /// candidate is equivalent to plain uniform selection; higher values bias
-    /// cluster centers toward the coast more consistently.
+    /// Samples ClosenessBiasSamples random cells and keeps whichever scores
+    /// best on a single combined score: squared distance to the map center (a
+    /// stand-in for "closest to the island", since the island is always
+    /// centered at the origin) plus a penalty for landing closer than
+    /// PreferredClusterSeparation to any center already in existingCenters,
+    /// scaled by SeparationBias. Nothing is ever outright rejected for being
+    /// too close — it's a soft preference, not a wall, so with a small sample
+    /// count a nearby candidate can still win if it's otherwise notably
+    /// better-positioned toward the island than the alternatives sampled that
+    /// round. Sampling just 1 candidate is equivalent to plain uniform
+    /// selection.
     /// </summary>
-    private Vector3Int PickCellBiasedTowardIsland(List<Vector3Int> cells, System.Random rng)
+    private Vector3Int PickClusterCenter(List<Vector3Int> cells, List<Vector3Int> existingCenters, System.Random rng)
     {
-        Vector3Int best = cells[rng.Next(cells.Count)];
-        long bestSqrDistance = SqrDistanceFromCenter(best);
+        float preferredSeparationSqr = preferredClusterSeparation * preferredClusterSeparation;
 
-        for (int i = 1; i < closenessBiasSamples; i++)
+        Vector3Int best = default;
+        long bestScore = long.MaxValue;
+
+        for (int i = 0; i < closenessBiasSamples; i++)
         {
             Vector3Int candidate = cells[rng.Next(cells.Count)];
-            long sqrDistance = SqrDistanceFromCenter(candidate);
-            if (sqrDistance < bestSqrDistance)
+
+            long shortfall = 0;
+            if (existingCenters.Count > 0)
+            {
+                long nearestExistingSqr = NearestSqrDistance(candidate, existingCenters);
+                shortfall = Math.Max(0L, (long)preferredSeparationSqr - nearestExistingSqr);
+            }
+
+            long score = SqrDistanceFromCenter(candidate) + (long)(shortfall * separationBias);
+            if (i == 0 || score < bestScore)
             {
                 best = candidate;
-                bestSqrDistance = sqrDistance;
+                bestScore = score;
             }
         }
 
         return best;
+    }
+
+    private static long NearestSqrDistance(Vector3Int cell, List<Vector3Int> others)
+    {
+        long nearest = long.MaxValue;
+        foreach (Vector3Int other in others)
+        {
+            long dx = cell.x - other.x;
+            long dy = cell.y - other.y;
+            long sqrDistance = dx * dx + dy * dy;
+            if (sqrDistance < nearest) nearest = sqrDistance;
+        }
+
+        return nearest;
     }
 
     private static long SqrDistanceFromCenter(Vector3Int cell) => (long)cell.x * cell.x + (long)cell.y * cell.y;

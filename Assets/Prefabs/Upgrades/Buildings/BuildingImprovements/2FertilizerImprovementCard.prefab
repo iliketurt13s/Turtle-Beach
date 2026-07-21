@@ -46,7 +46,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::FertilizerRespawnUpgradeCard
   displayName: Potent Piles
   icon: {fileID: 2085762236842698137, guid: 117b027bb6cb13b448672e34e7dca08d, type: 3}
-  description: Fertilizer makes plants respawn faster.
+  description: Fertilizer makes plants respawn an extra +25% faster.
   stackable: 1
   requiredBuilding: {fileID: 7076788680434553161, guid: 2fccf354ec361114f86a640e6bb25c7f, type: 3}
-  respawnBonusAdded: 0.2
+  respawnBonusAdded: 0.25

@@ -131,10 +131,10 @@ MonoBehaviour:
   displayName: Fertilizer
   cost:
   - type: 0
-    amount: 10
+    amount: 5
   - type: 1
     amount: 0
-  priceIncreasePercentPerPlacement: 25
+  priceIncreasePercentPerPlacement: 0
 --- !u!50 &5696860890716167856
 Rigidbody2D:
   serializedVersion: 5
@@ -174,10 +174,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 311967bd412906143ae9a1da8e05ab2b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ResourceRespawnBooster
+  kind: 0
   affectedTypes: 0000000002000000
   respawnSpeedBonus: 0.5
   range: 1
   boostVisual: {fileID: 4048204494759984873}
+  rangeParticles: {fileID: 790828529090493559}
 --- !u!114 &549214095652055890
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -328,7 +330,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4974210883585860105, guid: 77979421f59d6b048a3cba558a155a52, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -0.26172
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4974210883585860105, guid: 77979421f59d6b048a3cba558a155a52, type: 3}
       propertyPath: m_LocalPosition.z
@@ -371,6 +373,11 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 77979421f59d6b048a3cba558a155a52, type: 3}
+--- !u!198 &790828529090493559 stripped
+ParticleSystem:
+  m_CorrespondingSourceObject: {fileID: 7433079038873680102, guid: 77979421f59d6b048a3cba558a155a52, type: 3}
+  m_PrefabInstance: {fileID: 7916778782123967633}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &2943663288675542680 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4974210883585860105, guid: 77979421f59d6b048a3cba558a155a52, type: 3}

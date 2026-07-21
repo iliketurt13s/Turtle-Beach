@@ -27,6 +27,12 @@ public class TrashAgent : MonoBehaviour
     [Tooltip("Fraction of full impulse force applied on the very first burst, ramping up to 1 over Momentum Ramp Duration.")]
     [SerializeField, Range(0f, 1f)] private float startingSpeedMultiplier = 0.3f;
 
+    [Header("Round Scaling")]
+    [Tooltip("How much Burst Interval shrinks per round survived, compounding (e.g. 0.05 = 5% shorter each round past the first) — trash bursts more often night over night. Floored at Min Burst Interval so it never becomes impossibly fast however many rounds have passed.")]
+    [SerializeField, Range(0f, 1f)] private float burstIntervalReductionPerRound = 0.05f;
+    [Tooltip("Burst Interval, after round scaling, never drops below this.")]
+    [SerializeField] private float minBurstInterval = 0.4f;
+
     [Header("Tumble")]
     [Tooltip("Random torque impulse applied each burst so the trash spins/tumbles independently of its travel direction.")]
     [SerializeField] private float rotationForce = 20f;
@@ -34,6 +40,8 @@ public class TrashAgent : MonoBehaviour
     [Header("Pathfinding")]
     [Tooltip("Distance (world units) at which the current path waypoint is considered reached, advancing to the next one.")]
     [SerializeField] private float waypointArrivalDistance = 0.5f;
+    [Tooltip("Extra clearance (grid cells, on top of PathfindingManager's own Obstacle Inflation Radius) this trash's route keeps from nature obstacles — raise this on bigger trash prefabs so their path avoids gaps only wide enough for something smaller, instead of routing through one it can't physically fit and getting wedged against it mid-burst.")]
+    [SerializeField, Range(0, 3)] private int extraObstacleClearance = 0;
 
     private float stormElapsedTime;
     private float currentBurstInterval;
@@ -62,12 +70,12 @@ public class TrashAgent : MonoBehaviour
         currentBurstInterval = RollBurstInterval();
     }
 
-    /// <summary>Called by TrashSpawner right after instantiation with the nest to burst toward. Computes a path around nature ONCE, here — never recomputed afterward, only walked forward by index (see Update/CurrentAimPoint).</summary>
+    /// <summary>Called by TrashSpawner right after instantiation with the nest to burst toward. Computes a path around nature ONCE, here — never recomputed afterward, only walked forward by index (see Update/CurrentAimPoint). Passes extraObstacleClearance so bigger trash's route keeps more distance from nature than a gap it can't actually fit through.</summary>
     public void Initialize(Transform target)
     {
         nestTarget = target;
         path = target != null && PathfindingManager.Instance != null
-            ? PathfindingManager.Instance.FindPath(transform.position, target.position)
+            ? PathfindingManager.Instance.FindPath(transform.position, target.position, extraObstacleInflation: extraObstacleClearance)
             : null;
         pathIndex = 0;
     }
@@ -103,9 +111,20 @@ public class TrashAgent : MonoBehaviour
         }
     }
 
+    /// <summary>Burst Interval scaled down by burstIntervalReductionPerRound, compounding each round past the first (round 1 = no change, round 5 = burstInterval * (1 - reduction)^4), floored at minBurstInterval.</summary>
+    private float EffectiveBurstInterval
+    {
+        get
+        {
+            int round = DayStormCycle.Instance != null ? DayStormCycle.Instance.CurrentRound : 1;
+            float scaled = burstInterval * Mathf.Pow(1f - burstIntervalReductionPerRound, Mathf.Max(0, round - 1));
+            return Mathf.Max(minBurstInterval, scaled);
+        }
+    }
+
     private float RollBurstInterval()
     {
-        return Mathf.Max(0.05f, burstInterval + Random.Range(-burstIntervalVariance, burstIntervalVariance));
+        return Mathf.Max(0.05f, EffectiveBurstInterval + Random.Range(-burstIntervalVariance, burstIntervalVariance));
     }
 
     private void BurstTowardNest()

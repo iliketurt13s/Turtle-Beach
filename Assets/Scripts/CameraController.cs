@@ -9,8 +9,10 @@ public class CameraController : MonoBehaviour
 
     [Header("Zoom")]
     [SerializeField] private float zoomSpeed = 5f;
+    [Tooltip("Closest the camera can zoom in (smallest orthographic size).")]
     [SerializeField] private float minZoom = 2f;
-    [SerializeField] private float maxZoom = 20f;
+    [Tooltip("Farthest the camera can zoom out (largest orthographic size) — hard-capped further still by ClampToMapBounds so it can never exceed the painted map's own extent (core map + IslandGenerator's deep water outskirts) regardless of this value.")]
+    [SerializeField] private float maxZoom = 50f;
 
     [Header("Drag")]
     [SerializeField] private float dragSpeed = 1f;
@@ -29,6 +31,9 @@ public class CameraController : MonoBehaviour
     private bool isDragging;
     private float cumulativeDragDistance;
 
+    /// <summary>The orthographic size Drag Speed was tuned at, captured once so drag scaling (see HandleDrag) is relative rather than needing every scene to happen to start at some fixed absolute zoom.</summary>
+    private float referenceOrthographicSize;
+
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -40,6 +45,7 @@ public class CameraController : MonoBehaviour
 
         Instance = this;
         cam = GetComponent<Camera>();
+        referenceOrthographicSize = cam.orthographicSize;
     }
 
     private void OnDestroy()
@@ -56,11 +62,7 @@ public class CameraController : MonoBehaviour
 
     private void HandleZoom()
     {
-        // While forced into an uninterruptible placement (see
-        // BuildModeController.EnsureFoodBuildingPlaced), Shift can't cancel
-        // build mode to get zoom back — so zoom stays available specifically
-        // during that phase, even though IsActive is also true.
-        if ((BuildModeController.IsActive && !BuildModeController.IsForced) || UpgradeSelectionUI.IsActive) return;
+        if (BuildModeController.IsActive || UpgradeSelectionUI.IsActive) return;
 
         Mouse mouse = Mouse.current;
         if (mouse == null) return;
@@ -106,7 +108,14 @@ public class CameraController : MonoBehaviour
         cumulativeDragDistance += delta.magnitude;
         if (cumulativeDragDistance >= dragDistanceThreshold) WasDragging = true;
 
-        Vector3 move = new Vector3(-delta.x, -delta.y, 0f) * (dragSpeed * Time.unscaledDeltaTime);
+        // Scaled by how far zoomed out the camera currently is relative to
+        // where Drag Speed was tuned (referenceOrthographicSize) — the same
+        // mouse-pixel delta covers proportionally more world space the
+        // further zoomed out you are, so without this a drag would feel
+        // sluggish zoomed out and twitchy zoomed in instead of tracking the
+        // cursor consistently at any zoom level.
+        float zoomScale = referenceOrthographicSize > 0f ? cam.orthographicSize / referenceOrthographicSize : 1f;
+        Vector3 move = new Vector3(-delta.x, -delta.y, 0f) * (dragSpeed * zoomScale * Time.unscaledDeltaTime);
         transform.position += move;
     }
 

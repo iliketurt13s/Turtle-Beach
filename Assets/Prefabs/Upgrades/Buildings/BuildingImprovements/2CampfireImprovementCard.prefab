@@ -46,7 +46,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CampfireSpeedBonusUpgradeCard
   displayName: Hotter Flame
   icon: {fileID: -9041655687937585441, guid: 658c0f4ffe50b32448f12573a83f984d, type: 3}
-  description: Turtles in the range of the flame will be even faster.
+  description: Turtles in the range of the flame will be an extra +20% faster.
   stackable: 1
   requiredBuilding: {fileID: 7999720511810760301, guid: db07619ccc8d02540a12587573f3a458, type: 3}
-  speedBonusAdded: 0.1
+  speedBonusAdded: 0.2

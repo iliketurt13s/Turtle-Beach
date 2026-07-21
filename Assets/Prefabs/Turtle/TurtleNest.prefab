@@ -187,6 +187,23 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ab24ad9fd27c6444e90e286c9a67f0ed, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TurtleNest
+  foodIcons:
+  - type: 2
+    icon: {fileID: -7241068889357252438, guid: bd842e1f8ef87b4409286161b7a6e663, type: 3}
+  - type: 3
+    icon: {fileID: 6445885954475237343, guid: 7c0626868aa86ea48945198df8a8cb16, type: 3}
+  - type: 4
+    icon: {fileID: 7848954448796743709, guid: 133b028776a4d7f49890cb2a51ef6f3b, type: 3}
+  foodDistributionPopEffectPrefab: {fileID: 327863538382705492, guid: 8647bdec2b9a3854a94bc18340f2bc9d, type: 3}
+  distributionStaggerDelay: 0.08
+  foodCooldowns:
+  - type: 2
+    cooldownSeconds: 10
+  - type: 3
+    cooldownSeconds: 10
+  - type: 4
+    cooldownSeconds: 5
+  defaultCooldownSeconds: 5
   turtlePrefab: {fileID: 5487002307610338431, guid: 9674fbddbb0730546a91cb46603cf898, type: 3}
   turtleSpawnParent: {fileID: 488593349462489999}
   onNestDestroyed:

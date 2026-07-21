@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 6546159748101771865}
   - component: {fileID: 6205674922828057811}
   m_Layer: 0
-  m_Name: TurtleSpeed
+  m_Name: SeaweedBuff
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -808,7 +808,7 @@ ParticleSystem:
           m_PostInfinity: 2
           m_RotationOrder: 4
     arc:
-      value: 180
+      value: 360
       mode: 0
       spread: 0
       speed:

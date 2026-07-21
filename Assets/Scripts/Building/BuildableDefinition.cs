@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -19,6 +20,9 @@ public class BuildableDefinition : MonoBehaviour
     private float costMultiplier = 1f;
     private int healthBonus = 0;
 
+    /// <summary>Set by BuildModeController right after instantiating this buildable (see LinkToMaster) — Instantiate always gives a placed building its own separate BuildableDefinition component clone, distinct from this array entry that BuildModeController/upgrade cards actually read Cost from and mutate, so a placed instance needs a way back to it.</summary>
+    private BuildableDefinition master;
+
     public string DisplayName => displayName;
 
     /// <summary>The Inspector-authored base cost scaled up by Price Increase Percent Per Placement (compounded once per previous placement, see RegisterPlacement) and by Cost Multiplier (see MultiplyCost). Recomputed on every access rather than cached, since both change over the session.</summary>
@@ -29,6 +33,25 @@ public class BuildableDefinition : MonoBehaviour
 
     /// <summary>Bumps the price for this buildable's next placement. Called by BuildModeController right after a placement of this buildable succeeds.</summary>
     public void RegisterPlacement() => timesPlaced++;
+
+    /// <summary>Links a placed instance's own component clone back to this array entry, so its OnDestroy can find its way back to roll the price back down. Called once by BuildModeController right after Instantiate.</summary>
+    public void LinkToMaster(BuildableDefinition definitionMaster) => master = definitionMaster;
+
+    /// <summary>Raised on the master array entry (not the destroyed instance) right after RegisterDestruction, so BuildModeController can refresh the ghost's displayed cost if this buildable happens to be selected. See OnDestroy.</summary>
+    public static event Action<BuildableDefinition> PriceRolledBack;
+
+    /// <summary>Undoes one RegisterPlacement bump, so this buildable's next placement costs exactly what its last-placed instance cost. Called on this array entry (see OnDestroy) whenever any placed instance of it is destroyed — by trash, wearing out, or any other means — so losing a building always gets a discount back on rebuilding one, never stacking below what was actually paid.</summary>
+    public void RegisterDestruction()
+    {
+        timesPlaced = Mathf.Max(0, timesPlaced - 1);
+        PriceRolledBack?.Invoke(this);
+    }
+
+    /// <summary>Routes this placed instance's destruction back to the master array entry's RegisterDestruction (see LinkToMaster) — a no-op for the master entry itself, or for a stray instance BuildModeController never linked (e.g. StarterTurtleBedSpawner's freebie, which was never paid for either).</summary>
+    private void OnDestroy()
+    {
+        if (master != null) master.RegisterDestruction();
+    }
 
     /// <summary>Multiplies this buildable's cost from now on, e.g. 0.85 = 15% cheaper, 2f = double — from a building-branch upgrade card (see WallCostReductionUpgradeCard/SandPileCostAndDamageUpgradeCard). Stacks multiplicatively with repeated picks. Only affects placements made after it's called — cost is only read at placement time, so already-placed buildings are unaffected.</summary>
     public void MultiplyCost(float multiplier) => costMultiplier *= multiplier;

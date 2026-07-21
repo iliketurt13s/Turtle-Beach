@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(python3 -c \"import uuid; print\\(uuid.uuid4\\(\\).hex\\)\")",
-      "PowerShell([guid]::NewGuid\\(\\).ToString\\(\"N\"\\))"
+      "PowerShell([guid]::NewGuid\\(\\).ToString\\(\"N\"\\))",
+      "Bash(python3 -)"
     ]
   }
 }

@@ -23,6 +23,8 @@ public class IslandPropSpawner : MonoBehaviour
     [SerializeField] private GameObject[] natureObjects;
     [Tooltip("Roughly what fraction of eligible land cells (after the water/center margins below) get a nature object. Scales the total spawned with island size instead of a fixed number.")]
     [SerializeField, Range(0f, 1f)] private float resourceDensity = 0.08f;
+    [Tooltip("Minimum number of nodes guaranteed for every distinct ResourceType represented in Nature Objects (e.g. at least this many Wood nodes AND at least this many Rock nodes), spawned before the density-based budget above regardless of how a purely random draw would otherwise land — so a type can never come up empty (or nearly so) just from bad luck. Can push the total spawn count over Resource Density's target; only the remainder after these minimums is filled in uniformly at random across every prefab (see SpawnCategory), so any type is still free to end up well above this floor.")]
+    [SerializeField, Min(0)] private int minSpawnsPerResourceType = 3;
 
     [Header("Placement")]
     [Tooltip("Parent transform spawned props are placed under. Defaults to this object if left empty.")]
@@ -82,7 +84,7 @@ public class IslandPropSpawner : MonoBehaviour
 
         // Scales with however big/small this run's island turned out, rather than a fixed count.
         int spawnCount = Mathf.RoundToInt(landCells.Count * resourceDensity);
-        if (spawnCount <= 0) return;
+        if (spawnCount <= 0 && minSpawnsPerResourceType <= 0) return;
 
         if (!useFixedSeed) seed = Environment.TickCount;
         Debug.Log($"IslandPropSpawner: seed = {seed} (check 'Use Fixed Seed' and set this value to reproduce this prop layout)");
@@ -91,7 +93,39 @@ public class IslandPropSpawner : MonoBehaviour
         HashSet<Vector3Int> usedCells = new HashSet<Vector3Int>();
         Transform parent = propsParent != null ? propsParent : transform;
 
-        SpawnCategory(natureObjects, spawnCount, sandTilemap, landCells, usedCells, rng, parent);
+        int guaranteed = SpawnGuaranteedMinimums(sandTilemap, landCells, usedCells, rng, parent);
+        SpawnCategory(natureObjects, Mathf.Max(0, spawnCount - guaranteed), sandTilemap, landCells, usedCells, rng, parent);
+    }
+
+    /// <summary>Groups Nature Objects by their ResourceNode.ResourceType and spawns at least Min Spawns Per Resource Type of each represented type (picking randomly among just that type's own prefab variants), so the general random fill afterward (see SpawnCategory) can never leave a type at zero, or close to it, purely by chance. Prefabs missing a ResourceNode component aren't grouped by anything and are left entirely to the general fill. Returns how many were actually spawned, so the caller can subtract it from the remaining density-based budget.</summary>
+    private int SpawnGuaranteedMinimums(Tilemap sandTilemap, List<Vector3Int> landCells, HashSet<Vector3Int> usedCells, System.Random rng, Transform parent)
+    {
+        if (minSpawnsPerResourceType <= 0 || natureObjects == null) return 0;
+
+        Dictionary<ResourceManager.ResourceType, List<GameObject>> byType = new Dictionary<ResourceManager.ResourceType, List<GameObject>>();
+        foreach (GameObject prefab in natureObjects)
+        {
+            if (prefab == null) continue;
+
+            ResourceNode node = prefab.GetComponent<ResourceNode>();
+            if (node == null) continue;
+
+            if (!byType.TryGetValue(node.ResourceType, out List<GameObject> variants))
+            {
+                variants = new List<GameObject>();
+                byType[node.ResourceType] = variants;
+            }
+
+            variants.Add(prefab);
+        }
+
+        int totalSpawned = 0;
+        foreach (List<GameObject> variants in byType.Values)
+        {
+            totalSpawned += SpawnCategory(variants.ToArray(), minSpawnsPerResourceType, sandTilemap, landCells, usedCells, rng, parent);
+        }
+
+        return totalSpawned;
     }
 
     private bool IsFarEnoughFromWater(Vector3Int cell, Tilemap sandTilemap)
@@ -121,9 +155,9 @@ public class IslandPropSpawner : MonoBehaviour
         return distance > minDistanceFromCenter;
     }
 
-    private void SpawnCategory(GameObject[] prefabs, int count, Tilemap sandTilemap, List<Vector3Int> landCells, HashSet<Vector3Int> usedCells, System.Random rng, Transform parent)
+    private int SpawnCategory(GameObject[] prefabs, int count, Tilemap sandTilemap, List<Vector3Int> landCells, HashSet<Vector3Int> usedCells, System.Random rng, Transform parent)
     {
-        if (prefabs == null || prefabs.Length == 0 || count <= 0) return;
+        if (prefabs == null || prefabs.Length == 0 || count <= 0) return 0;
 
         int spawned = 0;
         int attempts = 0;
@@ -155,6 +189,8 @@ public class IslandPropSpawner : MonoBehaviour
             spawnedProps.Add(instance);
             spawned++;
         }
+
+        return spawned;
     }
 
     private void ClearProps()

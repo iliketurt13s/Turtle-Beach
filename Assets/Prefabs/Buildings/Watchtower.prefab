@@ -133,7 +133,7 @@ MonoBehaviour:
     amount: 15
   - type: 1
     amount: 15
-  priceIncreasePercentPerPlacement: 25
+  priceIncreasePercentPerPlacement: 0
 --- !u!61 &1154026437669159468
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -220,7 +220,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Watchtower
   targetRadius: 6
-  fireInterval: 1
+  fireInterval: 1.25
   turtleDockPoint: {fileID: 0}
   firePoint: {fileID: 9114680350766060333}
   sandBallPrefab: {fileID: 8594687565104925626, guid: f498bce7bbe6dde4cbf8d3de48458430, type: 3}
