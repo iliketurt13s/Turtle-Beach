@@ -23,6 +23,12 @@ public class GarbagePatchHealthBar : MonoBehaviour
             ? Mathf.Clamp(Mathf.RoundToInt((float)current / max * segments.Length), 0, segments.Length)
             : 0;
 
+        // A low ratio against a high Max Segments (e.g. Big Island's
+        // near-infinite cap, or Cove's) can round down to 0 visible pips even
+        // with real health still remaining — never show fully depleted while
+        // the patch is actually still alive.
+        if (current > 0) visibleCount = Mathf.Max(visibleCount, 1);
+
         for (int i = 0; i < segments.Length; i++)
         {
             if (segments[i] != null) segments[i].gameObject.SetActive(i < visibleCount);

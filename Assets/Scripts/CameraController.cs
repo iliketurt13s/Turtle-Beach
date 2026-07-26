@@ -25,6 +25,11 @@ public class CameraController : MonoBehaviour
     [Tooltip("Generator whose map size caps how far the camera can zoom out or pan, so it can never see past the grid's edge into empty space.")]
     [SerializeField] private IslandGenerator islandGenerator;
 
+    [Header("WebGL Input Scale")]
+    [Tooltip("The browser's native mouse-wheel/pointer events report deltas in a very different magnitude than the Editor's own input backend does (scroll deltaY especially can be off by 10-100x depending on browser) — Zoom Speed/Drag Speed above are tuned against the Editor, so these compensate only at runtime in an actual WebGL player (checked via Application.platform, never touching Editor/standalone behavior). These fields stay unconditionally serialized on every platform — an #if UNITY_EDITOR-style exclusion here would make the Editor and a WebGL Player build disagree about this type's field layout, which Unity warns about (and can break serialization) on domain reload. Start here and adjust after testing a real build; there's no single universally-correct value across every browser/display.")]
+    [SerializeField] private float webGLScrollScale = 0.1f;
+    [SerializeField] private float webGLDragScale = 0.3f;
+
     /// <summary>True if the mouse has moved at least DragDistanceThreshold (cumulative since the left button was last pressed, not just net displacement) — checked by TurtleSelectionController/BuildModeController so a pan/zoom gesture is never misread as a click-to-order or a building placement just because it happened to release near its own start point.</summary>
     public bool WasDragging { get; private set; }
 
@@ -81,6 +86,7 @@ public class CameraController : MonoBehaviour
         if (mouse == null) return;
 
         float scroll = mouse.scroll.ReadValue().y;
+        if (Application.platform == RuntimePlatform.WebGLPlayer) scroll *= webGLScrollScale;
         if (Mathf.Approximately(scroll, 0f)) return;
 
         cam.orthographicSize = Mathf.Clamp(
@@ -113,6 +119,8 @@ public class CameraController : MonoBehaviour
         Vector2 currentMousePosition = mouse.position.ReadValue();
         Vector2 delta = currentMousePosition - lastMousePosition;
         lastMousePosition = currentMousePosition;
+
+        if (Application.platform == RuntimePlatform.WebGLPlayer) delta *= webGLDragScale;
 
         // Cumulative, not net press-to-release displacement — so a pan that
         // wanders and happens to end back near its start still counts as a

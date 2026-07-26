@@ -1182,12 +1182,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9a129dae620cbd245b50a46db146de6f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraController
-  zoomSpeed: 125
+  zoomSpeed: 25
   minZoom: 2
   maxZoom: 30
-  dragSpeed: 5
+  dragSpeed: 2
   dragDistanceThreshold: 8
   islandGenerator: {fileID: 1635705031}
+  webGLScrollScale: 0.1
+  webGLDragScale: 0.3
 --- !u!114 &519420034
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3594,6 +3596,7 @@ MonoBehaviour:
   garbagePatchCutsceneController: {fileID: 1635705044}
   dayDuration: 60
   fadeOutDuration: 2
+  firstDayDurationReduction: 30
   baseRatingBudget: 4
   linearRatingPerRound: 4
   ratingGrowthPerRound: 1.225
@@ -3697,7 +3700,7 @@ MonoBehaviour:
   islandGenerator: {fileID: 1635705031}
   garbagePatchPrefab: {fileID: 2609405447027587535, guid: e3dc31471b35f2447a371ae9d5196d7c, type: 3}
   orbitMarginBeyondCore: 10
-  roundsPerIslandByMode: 100000000800000004000000
+  roundsPerIslandByMode: 140000000a00000005000000
 --- !u!114 &1635705044
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3714,7 +3717,7 @@ MonoBehaviour:
   upgradeSelectionUI: {fileID: 506704385}
   islandTransitionController: {fileID: 1635705045}
   hitParticlePrefab: {fileID: 897161434475639276, guid: 95141c041b9d2f14487372b51db22c3e, type: 3}
-  transitionPanel: {fileID: 0}
+  transitionPanel: {fileID: 1747816988}
   panOutDuration: 2
   holdAtPatchDuration: 1.5
   panBackDuration: 2
@@ -4088,6 +4091,8 @@ MonoBehaviour:
   finalMessageDuration: 4
   cameraPanDetectionDistance: 1
   cameraZoomDetectionAmount: 0.5
+  cameraControlsTimeout: 12
+  sendTurtlesFollowUpDelay: 15
 --- !u!1 &1931154502
 GameObject:
   m_ObjectHideFlags: 0
