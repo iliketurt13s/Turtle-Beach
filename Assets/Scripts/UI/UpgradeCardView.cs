@@ -15,12 +15,14 @@ public class UpgradeCardView : MonoBehaviour, IPointerEnterHandler, IPointerExit
 
     private UpgradeCardDefinition boundCard;
     private UpgradeSelectionUI owner;
+    private bool isHazard;
 
-    /// <summary>Called by UpgradeSelectionUI each time this slot is (re)used for a newly drawn card.</summary>
-    public void Bind(UpgradeCardDefinition card, UpgradeSelectionUI owner)
+    /// <summary>Called by UpgradeSelectionUI each time this slot is (re)used for a newly drawn card. isHazard flags whether card came from the hazard pool (ShowHazardChoice) rather than the normal helpful one, so hovering tints the shared name/description text red instead of white — see OnPointerEnter.</summary>
+    public void Bind(UpgradeCardDefinition card, UpgradeSelectionUI owner, bool isHazard)
     {
         boundCard = card;
         this.owner = owner;
+        this.isHazard = isHazard;
 
         if (iconImage != null) iconImage.sprite = card.Icon;
 
@@ -33,15 +35,15 @@ public class UpgradeCardView : MonoBehaviour, IPointerEnterHandler, IPointerExit
 
     private void HandleSelectClicked()
     {
-        owner?.Select(boundCard);
+        owner?.Select(this, boundCard);
     }
 
     public void OnPointerEnter(PointerEventData eventData)
     {
         if (owner == null || boundCard == null) return;
 
-        owner.ShowName(boundCard.DisplayName);
-        owner.ShowDescription(boundCard.Description);
+        owner.ShowName(boundCard.DisplayName, isHazard);
+        owner.ShowDescription(boundCard.Description, isHazard);
     }
 
     public void OnPointerExit(PointerEventData eventData)

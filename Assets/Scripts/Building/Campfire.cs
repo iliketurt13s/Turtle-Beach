@@ -12,7 +12,7 @@ using UnityEngine;
 /// turtle (see TurtleAgent.ApplyCampfireSpeedBuff), rather than the
 /// strongest one winning.
 /// </summary>
-public class Campfire : MonoBehaviour
+public class Campfire : MonoBehaviour, IHasPlacementRange
 {
     [Tooltip("Hidden during storms, shown during the day.")]
     [SerializeField] private GameObject flameVisual;
@@ -28,6 +28,9 @@ public class Campfire : MonoBehaviour
 
     /// <summary>range plus any run-wide bonus from Campfire-branch upgrade cards (see UpgradeManager.CampfireRangeBonus) — read live, same rationale as EffectiveSpeedBonus.</summary>
     private float EffectiveRange => range + (UpgradeManager.Instance != null ? UpgradeManager.Instance.CampfireRangeBonus : 0f);
+
+    /// <summary>IHasPlacementRange implementation, so BuildModeController's ghost shows this Campfire's real (upgrade-inclusive) range while it's selected for placement.</summary>
+    public float PlacementRange => EffectiveRange;
 
     // Records the exact bonus amount applied to each in-range turtle, not
     // just which turtles are in range — EffectiveSpeedBonus can change

@@ -21,6 +21,8 @@ public class BuildingHealth : MonoBehaviour
 
     [SerializeField] private int maxHealth = 10;
     [SerializeField] private int damagePerHit = 1;
+    [Tooltip("Minimum seconds between separate damage instances on this building — trash bouncing repeatedly against it (or several pieces colliding in the same instant) can't chip away more than one hit's worth inside this window.")]
+    [SerializeField] private float hitCooldown = 1f;
     [SerializeField] private BuildingHealthBar healthBar;
     [Tooltip("Whether turtles can be sent to interact with this building (e.g. buff stations). Non-interactable buildings (like walls) are just obstacles.")]
     [SerializeField] private bool isInteractable = false;
@@ -31,14 +33,19 @@ public class BuildingHealth : MonoBehaviour
     public void SetInteractable(bool value) => isInteractable = value;
 
     private int currentHealth;
+    private float lastHitTime = float.NegativeInfinity;
     private readonly List<Action> pendingBonusRevokers = new List<Action>();
 
     private BuildableDefinition definition;
+    private Watchtower watchtower;
     private int appliedHealthBonus;
+    private SquashAndStretch squashAndStretch;
 
     private void Awake()
     {
         definition = GetComponent<BuildableDefinition>();
+        watchtower = GetComponent<Watchtower>();
+        squashAndStretch = GetComponent<SquashAndStretch>();
         currentHealth = maxHealth;
         if (healthBar != null) healthBar.SetHealth(currentHealth, maxHealth);
     }
@@ -81,8 +88,26 @@ public class BuildingHealth : MonoBehaviour
     {
         if (collision.collider.GetComponentInParent<TrashItem>() == null) return;
 
-        currentHealth -= damagePerHit;
+        int damage = damagePerHit + (UpgradeManager.Instance != null ? UpgradeManager.Instance.TrashDamageBonus : 0);
+
+        TrashDefinition trashDefinition = collision.collider.GetComponentInParent<TrashDefinition>();
+        if (watchtower != null && trashDefinition != null && trashDefinition.TowerDamageMultiplier > 1f)
+        {
+            damage = Mathf.RoundToInt(damage * trashDefinition.TowerDamageMultiplier);
+        }
+
+        ApplyDamage(damage);
+    }
+
+    /// <summary>Applies damage from any source, collision or not (e.g. Battery's acid AoE via BatteryAcidOnDeath). Shared by OnCollisionEnter2D so both paths destroy exactly the same way. No-ops entirely (no squash, no health change) if Hit Cooldown hasn't elapsed since the last damage instance, so a trash piece bouncing repeatedly against this building can't melt it in one physical contact flurry.</summary>
+    public void ApplyDamage(int amount)
+    {
+        if (Time.time - lastHitTime < hitCooldown) return;
+        lastHitTime = Time.time;
+
+        currentHealth -= amount;
         if (healthBar != null) healthBar.SetHealth(currentHealth, maxHealth);
+        squashAndStretch?.Play();
         if (currentHealth <= 0)
         {
             Destroyed?.Invoke(this);

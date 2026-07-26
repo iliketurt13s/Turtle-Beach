@@ -67,8 +67,8 @@ public class ResourceClickTarget : MonoBehaviour, IHoverTintable
         }
     }
 
-    /// <summary>Click-routing lookup: checks every current resource's bounds (via this component if present, else its Collider2D.bounds as a safety net so a prefab someone forgot to add this component to is never LESS clickable than it was before) for whichever contains worldPoint, nearest-by-position among multiple matches. Returns the resource's own root Transform — what TurtleAgent.MoveToResource/TryGetHarvestType expects — or null if nothing matched.</summary>
-    public static Transform FindClickTargetAt(Vector3 worldPoint)
+    /// <summary>Click-routing lookup: checks every current resource's bounds (via this component if present, else its Collider2D.bounds as a safety net so a prefab someone forgot to add this component to is never LESS clickable than it was before) for whichever is within magnetRadius of worldPoint (0 = must land exactly inside, the original behavior — see IsWithinRange), nearest-by-position among multiple matches. Returns the resource's own root Transform — what TurtleAgent.MoveToResource/TryGetHarvestType expects — or null if nothing matched.</summary>
+    public static Transform FindClickTargetAt(Vector3 worldPoint, float magnetRadius = 0f)
     {
         Transform nearest = null;
         float nearestSqrDistance = float.MaxValue;
@@ -76,19 +76,19 @@ public class ResourceClickTarget : MonoBehaviour, IHoverTintable
         foreach (ResourceNode node in ResourceNode.AllNodes)
         {
             if (node == null) continue;
-            TryConsiderClickCandidate(node.transform, worldPoint, ref nearest, ref nearestSqrDistance);
+            TryConsiderClickCandidate(node.transform, worldPoint, magnetRadius, ref nearest, ref nearestSqrDistance);
         }
 
         foreach (Coconut coconut in Coconut.AllCoconuts)
         {
             if (coconut == null) continue;
-            TryConsiderClickCandidate(coconut.transform, worldPoint, ref nearest, ref nearestSqrDistance);
+            TryConsiderClickCandidate(coconut.transform, worldPoint, magnetRadius, ref nearest, ref nearestSqrDistance);
         }
 
         foreach (JellyfishAgent jellyfish in JellyfishAgent.AllJellyfish)
         {
             if (jellyfish == null) continue;
-            TryConsiderClickCandidate(jellyfish.transform, worldPoint, ref nearest, ref nearestSqrDistance);
+            TryConsiderClickCandidate(jellyfish.transform, worldPoint, magnetRadius, ref nearest, ref nearestSqrDistance);
         }
 
         return nearest;
@@ -121,9 +121,9 @@ public class ResourceClickTarget : MonoBehaviour, IHoverTintable
         return nearest;
     }
 
-    private static void TryConsiderClickCandidate(Transform candidate, Vector3 worldPoint, ref Transform nearest, ref float nearestSqrDistance)
+    private static void TryConsiderClickCandidate(Transform candidate, Vector3 worldPoint, float magnetRadius, ref Transform nearest, ref float nearestSqrDistance)
     {
-        if (!TryGetCandidateBounds(candidate, out Bounds bounds) || !Contains(bounds, worldPoint)) return;
+        if (!TryGetCandidateBounds(candidate, out Bounds bounds) || !IsWithinRange(bounds, worldPoint, magnetRadius)) return;
 
         float sqrDistance = ((Vector2)candidate.position - (Vector2)worldPoint).sqrMagnitude;
         if (sqrDistance < nearestSqrDistance)
@@ -135,7 +135,7 @@ public class ResourceClickTarget : MonoBehaviour, IHoverTintable
 
     private static void TryConsiderHoverCandidate(ResourceClickTarget candidate, Vector3 worldPoint, ref ResourceClickTarget nearest, ref float nearestSqrDistance)
     {
-        if (candidate == null || !candidate.TryGetBounds(out Bounds bounds) || !Contains(bounds, worldPoint)) return;
+        if (candidate == null || !candidate.TryGetBounds(out Bounds bounds) || !IsWithinRange(bounds, worldPoint, 0f)) return;
 
         float sqrDistance = ((Vector2)candidate.transform.position - (Vector2)worldPoint).sqrMagnitude;
         if (sqrDistance < nearestSqrDistance)
@@ -161,10 +161,10 @@ public class ResourceClickTarget : MonoBehaviour, IHoverTintable
         return false;
     }
 
-    /// <summary>Bounds.Contains requires an exact z match — flat sprite bounds have size.z == 0, so a caller's point.z (always 0 here, see TurtleSelectionController/HoverTargetOutline) would never match a resource sitting at a different z otherwise. Snaps the query point to the bounds' own z before testing.</summary>
-    private static bool Contains(Bounds bounds, Vector3 point)
+    /// <summary>True if point is inside bounds, or within magnetRadius of its nearest edge (0 = must land exactly inside, via Bounds.SqrDistance returning 0 for any interior/boundary point — the same test Contains used to do, just unified with the magnet-radius case below). Bounds.Contains/SqrDistance both require an exact z match — flat sprite bounds have size.z == 0, so a caller's point.z (always 0 here, see TurtleSelectionController/HoverTargetOutline) would never match a resource sitting at a different z otherwise. Snaps the query point to the bounds' own z before testing.</summary>
+    private static bool IsWithinRange(Bounds bounds, Vector3 point, float magnetRadius)
     {
         point.z = bounds.center.z;
-        return bounds.Contains(point);
+        return bounds.SqrDistance(point) <= magnetRadius * magnetRadius;
     }
 }

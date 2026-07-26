@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 /// <summary>
 /// Per-turtle brain, built around one central idea: the target resource
@@ -41,16 +42,31 @@ using UnityEngine;
 /// lets it double as rearranging turtles or giving one a patrol spot. A
 /// storm cancels an in-flight resource task the instant it starts (see
 /// CancelResourceTaskForNight) — and a beeline-home trip if one happens to be
-/// in progress too (see CancelReturnTripForNight; the turtle keeps whatever
-/// it was carrying, just isn't forced to keep walking it home through the
-/// fight) — but leaves a ground-move order completely untouched. Separately, a turtle that notices trash within its aggro
+/// in progress too (see CancelReturnTrip; the turtle keeps whatever it was
+/// carrying, just isn't forced to keep walking it home through the fight). A
+/// fresh ground/building movement command (MoveToPoint/MoveToBuilding) cancels
+/// an in-progress beeline-home trip the same way — the turtle can be
+/// redirected to help elsewhere even while ferrying a full load, still
+/// carrying everything it collected, delivering it later either via a
+/// subsequent order back near the nest or passively (CheckPassiveNestDelivery)
+/// if ordinary movement happens to bring it back into range; an already-in-
+/// progress delivery (the pop-off-and-fly animation once a trip has actually
+/// arrived) is left alone rather than interrupted mid-flight. MoveToResource is
+/// the one exception: picking a new resource while beelining home only swaps
+/// the standing objective for later, leaving the current trip and its path
+/// untouched. Separately, a turtle that notices trash within its aggro
 /// distance while storming temporarily abandons whatever it was doing to go
 /// attack the nearest one (same bounce-and-collide mechanic as harvesting,
 /// damaging the trash's TrashHealth on each hit — trash itself is never a
 /// target objective), then resumes its previous task once that trash is
 /// destroyed or the storm ends, whichever comes first (see EndAggro's call
 /// in Update()) — aggro is strictly storm-only and self-terminates at dawn
-/// rather than chasing into daylight.
+/// rather than chasing into daylight. A saved ground-move order (a bare
+/// MoveToPoint click) is the one exception: EndAggro treats it as abandoned
+/// rather than resuming it, falling through to the normal nest-guard/wander
+/// default instead — a turtle shouldn't finish a fight only to walk back out
+/// to some stale pre-storm click instead of helping defend. A saved
+/// building-visit order still resumes normally.
 ///
 /// Turtles otherwise pass through buildings (see the Turtle/Building layer
 /// collision exclusion) so they don't get stuck on walls. When targeting an
@@ -80,8 +96,14 @@ public class TurtleAgent : MonoBehaviour
     [Header("Aggro")]
     [Tooltip("Distance (world units) within which this turtle will notice and go attack trash.")]
     [SerializeField] private float aggroDistance = 3f;
-    [Tooltip("Seconds a fresh movement command (MoveToPoint) suppresses new aggro acquisition — lets the player actually relocate a turtle to a different part of the island instead of it immediately locking back onto whatever trash happens to be nearby the moment it starts moving. Doesn't affect an aggro chase already in progress, and doesn't apply to resource/building orders.")]
-    [SerializeField] private float aggroSuppressionDuration = 3f;
+    [Tooltip("Base radius (world units) around a MoveToPoint destination within which this turtle becomes eligible to re-acquire aggro again — checked live against its current distance to the destination every frame, not a timer, so it's never an estimate that can run out early or linger too long. Scales up with the order's total travel distance (see Aggro Unlock Radius Per Distance/Max below): a short click needs this turtle to arrive almost exactly before it'll fight, so directing it at one specific piece of trash close by still feels precise, while a long relocation across the island only needs it to get generally clear of/close to the area — it doesn't have to thread the exact clicked pixel through whatever's in the way. Doesn't affect an aggro chase already in progress, and doesn't apply to resource/building orders.")]
+    [SerializeField] private float aggroUnlockRadiusBase = 0.4f;
+    [Tooltip("Additional aggro-unlock radius per world unit of a MoveToPoint order's total travel distance, added to Aggro Unlock Radius Base and capped at Aggro Unlock Radius Max.")]
+    [SerializeField] private float aggroUnlockRadiusPerDistance = 0.15f;
+    [Tooltip("Hard cap on the aggro-unlock radius regardless of how far a MoveToPoint order sends this turtle.")]
+    [SerializeField] private float aggroUnlockRadiusMax = 4f;
+    [Tooltip("Extra obstacle clearance (grid cells) applied to the aggro line-of-sight shortcut (see UpdateAggroSteering), matching how wide this turtle physically is. Without this, the LOS check (a zero-width line) could approve a straight shot through a gap between two nature obstacles too narrow for the turtle's actual body to fit through, the same concern TrashAgent's Extra Obstacle Clearance addresses for pathfinding.")]
+    [SerializeField, Range(0, 3)] private int aggroLineOfSightWidth = 1;
 
     [Header("Nest Defense")]
     [Tooltip("While storming, an idle turtle (no order, not aggroed) heads toward the nest to help guard it, stopping once within this distance rather than stacking on top of it.")]
@@ -137,6 +159,8 @@ public class TurtleAgent : MonoBehaviour
 
     private TurtleTargetSteering steering;
     private TurtleLocomotion locomotion;
+    private SquashAndStretch squashAndStretch;
+    private Camera cam;
     private Rigidbody2D rb;
     private IReadOnlyList<LimbOscillator> fins;
     private SpriteRenderer[] spriteRenderers;
@@ -152,17 +176,27 @@ public class TurtleAgent : MonoBehaviour
 
     private bool isAggroed;
     private TrashHealth aggroTarget;
+
+    /// <summary>True while this turtle is actively chasing a piece of trash (see TryAcquireAggroTarget/EndAggro) — exposed for TutorialManager to detect that the player has driven a turtle into range of incoming trash rather than polling private aggro state directly.</summary>
+    public bool IsAggroed => isAggroed;
     private bool hadSavedTask;
     private Transform savedTaskTarget;
     private bool savedTaskIsGroundMove;
     private bool savedTaskIsResourceTask;
 
-    // Counts down in TryAcquireAggroTarget regardless of day/night, but only
-    // actually blocks acquisition while storming (the only time it'd matter) —
-    // set to aggroSuppressionDuration by MoveToPoint, so a movement command
-    // given well before a storm starts doesn't leave a stale window active by
-    // the time it would count.
-    private float aggroSuppressionTimer;
+    // Set by MoveToPoint (see aggroUnlockRadiusBase's own tooltip) and checked
+    // live in TryAcquireAggroTarget against this turtle's current distance to
+    // moveTargetMarker every frame — not a countdown, so there's nothing here
+    // that can go stale between being set and actually mattering (e.g. a
+    // command given well before a storm starts).
+    private float aggroUnlockRadius;
+
+    // True only if MoveToPoint's BeginPathTo call actually found a route —
+    // false means this ground-move order is stuck unreachable (frozen, not
+    // actually going anywhere), in which case TryAcquireAggroTarget should
+    // never withhold aggro on the strength of a destination this turtle isn't
+    // making any progress toward anyway.
+    private bool groundMoveReachable;
 
     // Set while aggro-chasing a target that's currently in deep water (see
     // UpdateWaitAtShore) — shoreWaitMarker holds the nearest shoreline point to
@@ -197,8 +231,15 @@ public class TurtleAgent : MonoBehaviour
     [Header("Pathfinding")]
     [Tooltip("Distance (world units) at which an in-progress path's current waypoint is considered reached, advancing to the next one.")]
     [SerializeField] private float waypointArrivalDistance = 0.4f;
-    [Tooltip("While resource-seeking (isResourceTask) and following a path, once within this many tiles of the target with a clear line of sight, skip the remaining waypoints and steer straight at it instead — avoids a needlessly indirect final leg this close up (e.g. an isolated resource surrounded by open water).")]
-    [SerializeField] private float resourceLineOfSightShortcutRange = 2f;
+    [Tooltip("How often (seconds) an in-progress path checks whether its live destination Transform (e.g. chased trash, a harvested Jellyfish — anything that moves on its own) has drifted too far from where the path was originally aimed, repathing early if so. Prevents overshooting to a stale position and having to double back once the old path finishes — see UpdatePathFollowing. Irrelevant for a static destination (a resource node, a ground-move point, the nest), which never drifts.")]
+    [SerializeField] private float pathRetargetCheckInterval = 0.4f;
+    [Tooltip("How far (world units) a path's live destination Transform must drift from where the path was originally computed before it triggers an early repath.")]
+    [SerializeField] private float pathRetargetDistance = 1f;
+    [Tooltip("Waypoints trimmed off the tail end of a computed aggro-chase path, so the turtle switches from following the (already slightly stale) route to steering live at the target's actual current position a bit before it would otherwise reach the end of it. Aggroed trash is usually being driven back toward the turtle by the player, so aiming the last few steps short of its recorded position — rather than all the way to it — avoids overshooting to where it used to be. 0 = walk the full computed path, matching old behavior.")]
+    [SerializeField] private int aggroChasePathShortenSteps = 3;
+
+    private float pathRetargetTimer;
+    private Vector3 pathTargetSnapshotPosition;
 
     [Header("Stuck Detection")]
     [Tooltip("While resource-seeking (isResourceTask), how often this turtle checks whether it's actually made progress — if it hasn't moved at least Stuck Movement Threshold since the last check, it gets a small sideways nudge to break out of a dead-on bounce loop (e.g. against a bouncy resource with nothing nearby to naturally curve the approach, like an isolated seaweed patch out in open water).")]
@@ -217,6 +258,16 @@ public class TurtleAgent : MonoBehaviour
     [SerializeField] private Color pathGizmoColor = Color.cyan;
     [SerializeField] private Color pathGizmoCurrentWaypointColor = Color.yellow;
     [SerializeField] private Color pathGizmoDestinationColor = Color.magenta;
+
+    [Header("Aggro Debug")]
+    [Tooltip("Draws a wire circle of radius Aggro Distance around this turtle in the Scene view (Gizmos) at all times — the range within which it'll notice and go attack trash. Purely a debug aid, has no gameplay effect.")]
+    [SerializeField] private bool showAggroRangeGizmo = true;
+    [SerializeField] private Color aggroRangeGizmoColor = new Color(1f, 0.3f, 0.3f);
+    [Tooltip("While a ground-move order (MoveToPoint) is in progress, draws a wire circle of the live Aggro Unlock Radius around its destination — the zone this turtle must get inside before it's eligible to re-acquire aggro again (see aggroUnlockRadiusBase's own tooltip). Lets you eyeball how the radius scales with a short click versus a long one.")]
+    [SerializeField] private bool showAggroUnlockRadiusGizmo = true;
+    [SerializeField] private Color aggroUnlockRadiusGizmoColor = new Color(0.3f, 1f, 0.3f);
+    [Tooltip("While aggroed, draws a line from this turtle to its current aggro target, tinted Aggro Range Gizmo Color.")]
+    [SerializeField] private bool showAggroTargetGizmo = true;
 
     // Path-following state, shared by every destination-seeking behavior
     // (real orders via ApplyTask, idle wander, storm nest-guard). Deliberately
@@ -275,6 +326,8 @@ public class TurtleAgent : MonoBehaviour
     {
         steering = GetComponent<TurtleTargetSteering>();
         locomotion = GetComponent<TurtleLocomotion>();
+        squashAndStretch = GetComponent<SquashAndStretch>();
+        cam = Camera.main;
         rb = GetComponent<Rigidbody2D>();
         carriedVisuals = GetComponentInChildren<CarriedResourceVisuals>(true);
         fins = locomotion.PropellingFins;
@@ -337,18 +390,19 @@ public class TurtleAgent : MonoBehaviour
             return;
         }
 
+        CheckResourceTaskStillHarvestable();
         UpdatePathFollowing();
         UpdateStuckDetection();
 
         // Checked before the isReturningToNest bypass below so a return trip
         // in progress the instant night falls can be cancelled (see
-        // CancelReturnTripForNight) on this same frame, before that bypass
-        // gets a chance to claim the rest of Update() for it.
+        // CancelReturnTrip) on this same frame, before that bypass gets a
+        // chance to claim the rest of Update() for it.
         bool storming = DayStormCycle.IsStorming;
         if (storming && !wasStorming)
         {
             CancelResourceTaskForNight();
-            CancelReturnTripForNight();
+            CancelReturnTrip();
         }
         else if (!storming && wasStorming)
         {
@@ -369,10 +423,14 @@ public class TurtleAgent : MonoBehaviour
         // beelines for the nest — bypassing everything below exactly like
         // isParked already does above. Only true during the day (or the tail
         // end of a trip already past cancellation above once night falls,
-        // see CancelReturnTripForNight) — a storm starting mid-trip cancels
-        // it instead of forcing the turtle to keep ignoring the fight to walk
-        // resources home; it resumes seeking its objective fresh the next
-        // time it goes idle during the day, same as any other cancelled task.
+        // see CancelReturnTrip) — a storm starting mid-trip cancels it instead
+        // of forcing the turtle to keep ignoring the fight to walk resources
+        // home, and a fresh ground/building movement command redirects it the
+        // same way (see MoveToPoint/MoveToBuilding; MoveToResource is the
+        // exception — it only swaps the objective, see MoveToResource's own
+        // doc comment) — either way it resumes seeking its objective fresh
+        // the next time it goes idle during the
+        // day, same as any other cancelled task.
         if (isReturningToNest)
         {
             UpdateReturnToNest();
@@ -393,6 +451,18 @@ public class TurtleAgent : MonoBehaviour
         // trip's just-set path/steering with a redundant one toward the same
         // destination.
         if (isReturningToNest) return;
+
+        // While selected, the player is actively steering this turtle by hand
+        // and it should ignore every standing duty (objective-seeking, aggro,
+        // idle) until given an explicit order or deselected — both of which
+        // happen for free the instant TurtleSelectionController.HandleClick
+        // issues a MoveTo*/deselects, since IsSelected simply goes false and
+        // Update() resumes evaluating everything below fresh next frame.
+        if (IsSelected)
+        {
+            FollowMouse();
+            return;
+        }
 
         if (isAggroed)
         {
@@ -422,8 +492,14 @@ public class TurtleAgent : MonoBehaviour
         UpdateIdle(storming);
     }
 
-    /// <summary>Debug-only Scene view visualization of this turtle's current path (see currentPath/currentPathIndex/pathFinalDestination, all set by BeginPathTo and advanced by UpdatePathFollowing) — draws the exact remaining route from here to its destination, so a pathfinding bug (an unexpectedly long detour, a route that hugs an obstacle too closely, one that never advances, etc.) is visible directly in the Scene view instead of having to reason about it from code. No gameplay effect; only runs while the Editor is drawing gizmos.</summary>
+    /// <summary>Debug-only Scene view visualization — no gameplay effect, only runs while the Editor is drawing gizmos. Draws this turtle's current path (see currentPath/currentPathIndex/pathFinalDestination, all set by BeginPathTo and advanced by UpdatePathFollowing): the exact remaining route from here to its destination, so a pathfinding bug (an unexpectedly long detour, a route that hugs an obstacle too closely, one that never advances, etc.) is visible directly in the Scene view instead of having to reason about it from code. Also draws the aggro system's two live radii (see the Aggro Debug fields' own tooltips) so both can be eyeballed and tuned directly rather than inferred from behavior alone.</summary>
     private void OnDrawGizmos()
+    {
+        DrawPathGizmo();
+        DrawAggroGizmos();
+    }
+
+    private void DrawPathGizmo()
     {
         if (!showPathGizmo || !isFollowingPath || currentPath == null || currentPathIndex >= currentPath.Count) return;
 
@@ -452,12 +528,39 @@ public class TurtleAgent : MonoBehaviour
         }
     }
 
+    private void DrawAggroGizmos()
+    {
+        if (showAggroRangeGizmo)
+        {
+            Gizmos.color = aggroRangeGizmoColor;
+            Gizmos.DrawWireSphere(transform.position, aggroDistance);
+        }
+
+        // Only meaningful while a ground-move order is actually in progress —
+        // moveTargetMarker/aggroUnlockRadius are stale leftovers from the last
+        // MoveToPoint call otherwise, so drawing them unconditionally would be
+        // misleading (a circle sitting on wherever the last order happened to
+        // send this turtle, long after it arrived and moved on to something else).
+        if (showAggroUnlockRadiusGizmo && isGroundMove && moveTargetMarker != null)
+        {
+            Gizmos.color = aggroUnlockRadiusGizmoColor;
+            Gizmos.DrawWireSphere(moveTargetMarker.position, aggroUnlockRadius);
+        }
+
+        if (showAggroTargetGizmo && isAggroed && aggroTarget != null)
+        {
+            Gizmos.color = aggroRangeGizmoColor;
+            Gizmos.DrawLine(transform.position, aggroTarget.transform.position);
+        }
+    }
+
     public void Select()
     {
         if (IsSelected) return;
 
         IsSelected = true;
         ApplyTint(selectedTint);
+        squashAndStretch?.Play();
     }
 
     public void Deselect()
@@ -468,15 +571,31 @@ public class TurtleAgent : MonoBehaviour
         RevertTint();
     }
 
-    /// <summary>A pure transient detour — works at any time, day or night, and never touches the target resource objective. Once arrived, the turtle simply falls back to its normal day/night default (seek the objective if it's day and has one, nest-guard/wander otherwise) via Update()'s own idle handling, exactly like a finished Rune visit or Watchtower release does. Also suppresses new aggro acquisition for aggroSuppressionDuration (see TryAcquireAggroTarget), so relocating a turtle to help elsewhere on the island doesn't just have it immediately lock back onto whatever trash happens to be nearby the moment it sets off. Dismounts a stationed turtle first (see Unpark) rather than silently doing nothing — a Watchtower's turtle would otherwise be stuck there, unreachable by any order, until the storm ends releases it automatically; Watchtower notices on its own next Update and forgets this turtle so a new one can be stationed.</summary>
+    /// <summary>Steers directly at the mouse cursor's world position — no pathfinding, just the same moveTargetMarker/steering hookup a ground-move order uses. Only called while IsSelected (see Update's early-return above); fins stop once within arrivalDistance so the turtle doesn't paddle in place under a stationary cursor.</summary>
+    private void FollowMouse()
+    {
+        Mouse mouse = Mouse.current;
+        if (mouse == null || cam == null) return;
+
+        Vector3 worldPoint = cam.ScreenToWorldPoint(mouse.position.ReadValue());
+        worldPoint.z = 0f;
+
+        moveTargetMarker.position = worldPoint;
+        steering.SetTarget(moveTargetMarker);
+        SetFinsPlaying(Vector2.Distance(transform.position, worldPoint) > arrivalDistance);
+    }
+
+    /// <summary>A pure transient detour — works at any time, day or night, and never touches the target resource objective. Once arrived, the turtle simply falls back to its normal day/night default (seek the objective if it's day and has one, nest-guard/wander otherwise) via Update()'s own idle handling, exactly like a finished Rune visit or Watchtower release does. Also suppresses new aggro acquisition until this turtle gets within a radius of worldPoint scaled to how far away it is (see aggroUnlockRadiusBase/TryAcquireAggroTarget), so relocating a turtle to help elsewhere on the island doesn't just have it immediately lock back onto whatever trash happens to be nearby the moment it sets off — and a longer trip's wider radius means it doesn't have to thread the exact clicked point through whatever's in the way first. Dismounts a stationed turtle first (see Unpark) rather than silently doing nothing — a Watchtower's turtle would otherwise be stuck there, unreachable by any order, until the storm ends releases it automatically; Watchtower notices on its own next Update and forgets this turtle so a new one can be stationed.</summary>
     public void MoveToPoint(Vector3 worldPoint)
     {
         if (isParked) Unpark();
 
-        // Let an in-progress delivery trip finish on its own terms rather than
-        // having this order redirect the turtle's physical steering away from
-        // the nest/Food Building while isReturningToNest/Food stays stuck true.
-        if (isReturningToNest) return;
+        // Redirects an in-progress beeline-home trip instead of ignoring the
+        // order (see CancelReturnTrip) — the turtle keeps whatever it's
+        // carrying and delivers it later, either via a subsequent order back
+        // near the nest or passively if this new destination happens to bring
+        // it into range anyway.
+        CancelReturnTrip();
 
         // Redirect a click out in the ocean to the nearest shallow-water/shore
         // point instead of just disregarding the order outright — BeginPathTo
@@ -490,13 +609,14 @@ public class TurtleAgent : MonoBehaviour
             worldPoint = PathfindingManager.Instance.NearestNonDeepWaterPoint(worldPoint);
         }
 
-        aggroSuppressionTimer = aggroSuppressionDuration;
+        float orderDistance = Vector2.Distance(transform.position, worldPoint);
+        aggroUnlockRadius = Mathf.Min(aggroUnlockRadiusBase + orderDistance * aggroUnlockRadiusPerDistance, aggroUnlockRadiusMax);
         CancelAggro();
         moveTargetMarker.position = worldPoint;
         ApplyTask(moveTargetMarker, isGroundMove: true);
     }
 
-    /// <summary>Assigns the target resource objective (the player selecting a turtle then clicking a resource/Coconut/Jellyfish) and, if conditions allow, immediately starts moving to harvest this exact instance. The objective itself is always recorded regardless of time of day or an in-progress delivery trip — "can still be changed, but the turtle doesn't act on it until morning" — only the immediate move is gated: skipped while mid-delivery-trip (lets that trip finish on its own terms; the objective is picked up fresh afterward via SeekTargetResourceOrIdle) or while storming (queued for morning — harvesting is a daytime-only activity, see HandleHeadHit's storm guards).</summary>
+    /// <summary>Assigns the target resource objective (the player selecting a turtle then clicking a resource/Coconut/Jellyfish) and, if conditions allow, immediately starts moving to harvest this exact instance. The objective itself is always recorded regardless of time of day or an in-progress delivery trip — "can still be changed, but the turtle doesn't act on it until morning." Unlike MoveToPoint/MoveToBuilding, this does NOT redirect an in-progress beeline-home trip — picking a new resource while beelining home just updates what the turtle pursues once it's delivered and free again; the current trip (and its path) is left alone rather than being cancelled out from under it. The immediate move is otherwise still gated while storming (queued for morning — harvesting is a daytime-only activity, see HandleHeadHit's storm guards).</summary>
     public void MoveToResource(Transform resourceTransform)
     {
         if (isParked) Unpark();
@@ -514,18 +634,18 @@ public class TurtleAgent : MonoBehaviour
         ApplyTask(resourceTransform, isGroundMove: false, isResourceTask: true);
     }
 
-    /// <summary>Sends the turtle to an interactable building, switching it onto the TurtleInteracting layer so it can physically reach and bump into it. Never touches the target resource objective — a Rune visit (see ClearTask) or a Watchtower stationing/release (see Park/Unpark) is just a transient detour, exactly like MoveToPoint. Dismounts a stationed turtle first (see MoveToPoint's own doc comment) so it can be sent straight to a different building, including another Watchtower.</summary>
+    /// <summary>Sends the turtle to an interactable building, switching it onto the TurtleInteracting layer so it can physically reach and bump into it. Never touches the target resource objective — a Rune visit (see ClearTask) or a Watchtower stationing/release (see Park/Unpark) is just a transient detour, exactly like MoveToPoint. Redirects an in-progress beeline-home trip rather than blocking the order (see CancelReturnTrip). Dismounts a stationed turtle first (see MoveToPoint's own doc comment) so it can be sent straight to a different building, including another Watchtower.</summary>
     public void MoveToBuilding(Transform buildingTransform)
     {
         if (isParked) Unpark();
 
-        if (isReturningToNest) return;
+        CancelReturnTrip();
 
         CancelAggro();
         ApplyTask(buildingTransform, isGroundMove: false);
     }
 
-    /// <summary>Called by TurtleHeadHitbox — only the head's contact counts as a harvest/rune hit, not the shell. Resource/Coconut/Jellyfish hits are all no-ops while storming (see each branch's guard below) — harvesting is strictly a daytime activity.</summary>
+    /// <summary>Called by TurtleHeadHitbox — only the head's contact counts as a harvest/rune hit, not the shell. Resource/Coconut/Jellyfish hits are all no-ops while storming or while selected (see each branch's guard below) — harvesting is strictly a daytime activity, and a turtle the player is actively mouse-steering shouldn't collect anything it's dragged into.</summary>
     public void HandleHeadHit(Collider2D other)
     {
         ResourceNode node = other.GetComponentInParent<ResourceNode>();
@@ -534,7 +654,11 @@ public class TurtleAgent : MonoBehaviour
             // Bouncing off a resource is still fine during a storm (physical
             // collision is untouched) — it just stops yielding anything. A
             // depleted (dormant) node also yields nothing until it respawns.
-            if (!DayStormCycle.IsStorming && node.IsHarvestable)
+            // TutorialManager.IsHarvestAllowed also blocks the type not being
+            // asked for during its rock/wood collection steps. !IsSelected
+            // stops a turtle the player is actively mouse-steering from
+            // harvesting anything it happens to be dragged into.
+            if (!DayStormCycle.IsStorming && !IsSelected && node.IsHarvestable && TutorialManager.IsHarvestAllowed(node.ResourceType))
             {
                 int amount = UpgradeManager.Instance != null ? UpgradeManager.Instance.RollHarvestAmount(node.ResourceType) : 1;
 
@@ -551,18 +675,11 @@ public class TurtleAgent : MonoBehaviour
             else if (!node.IsHarvestable && isResourceTask && currentTaskTarget == node.transform)
             {
                 // This node depleted while it was this turtle's active harvest
-                // order — rather than keep bumping a dormant node until it
-                // respawns, look for another node of the same resource type
-                // right away (below capacity, so no reason to make the trip
-                // back first) and only go idle if genuinely none are left.
-                if (carriedResources.Count >= carryCapacity)
-                {
-                    BeginReturnToNest();
-                }
-                else
-                {
-                    SeekTargetResourceOrIdle(node.ResourceType);
-                }
+                // order (should be rare now that CheckResourceTaskStillHarvestable
+                // catches this proactively every frame en route — this stays as
+                // a fallback for the same-frame edge case where a node depletes
+                // right as this turtle's own head hit lands).
+                HandleDepletedResourceTask(node.ResourceType);
             }
             return;
         }
@@ -577,7 +694,7 @@ public class TurtleAgent : MonoBehaviour
         Coconut coconut = other.GetComponentInParent<Coconut>();
         if (coconut != null)
         {
-            if (!DayStormCycle.IsStorming)
+            if (!DayStormCycle.IsStorming && !IsSelected)
             {
                 bool wasThisTurtlesTask = isResourceTask && currentTaskTarget == coconut.transform;
                 bool consumed = coconut.RegisterHit(this);
@@ -598,7 +715,7 @@ public class TurtleAgent : MonoBehaviour
         JellyfishAgent jellyfish = other.GetComponentInParent<JellyfishAgent>();
         if (jellyfish != null)
         {
-            if (!DayStormCycle.IsStorming)
+            if (!DayStormCycle.IsStorming && !IsSelected)
             {
                 bool wasThisTurtlesTask = isResourceTask && currentTaskTarget == jellyfish.transform;
                 bool consumed = jellyfish.RegisterHit(this);
@@ -617,6 +734,35 @@ public class TurtleAgent : MonoBehaviour
 
         Watchtower watchtower = other.GetComponentInParent<Watchtower>();
         if (watchtower != null) watchtower.TryStationTurtle(this);
+    }
+
+    /// <summary>Shared by HandleHeadHit's on-contact depletion branch and CheckResourceTaskStillHarvestable's proactive per-frame one: either deliver what's already carried (no reason to make the trip back later) or go find another instance of the same resource type right away.</summary>
+    private void HandleDepletedResourceTask(ResourceManager.ResourceType type)
+    {
+        if (carriedResources.Count >= carryCapacity) BeginReturnToNest();
+        else SeekTargetResourceOrIdle(type);
+    }
+
+    /// <summary>
+    /// Proactively re-checks, every frame this turtle has an active resource
+    /// task, whether its target ResourceNode is still harvestable — not just
+    /// on physical contact (see HandleHeadHit's own branch, now a same-frame
+    /// fallback) — so a node another turtle depletes while this one is still
+    /// mid-journey toward it gets caught immediately instead of only once this
+    /// turtle finally arrives and bumps it, potentially after crossing the
+    /// whole island for nothing. Coconut/JellyfishAgent targets don't need
+    /// this: consuming one destroys it outright rather than leaving it
+    /// dormant, and UpdatePathFollowing/currentTaskTarget already handle a
+    /// destroyed target going null mid-path.
+    /// </summary>
+    private void CheckResourceTaskStillHarvestable()
+    {
+        if (!isResourceTask || currentTaskTarget == null) return;
+
+        ResourceNode node = currentTaskTarget.GetComponent<ResourceNode>();
+        if (node == null || node.IsHarvestable) return;
+
+        HandleDepletedResourceTask(node.ResourceType);
     }
 
     /// <summary>Always does a fresh "closest instance of type" search — called right after a node depletes/a Coconut or Jellyfish is consumed, after a full-capacity delivery trip completes, and by TrySeekTargetResource's idle recheck. Only goes idle once genuinely nothing of type is harvestable anywhere — but leaves hasTargetResource/targetResourceType completely untouched (they aren't even parameters here anymore), so TrySeekTargetResource's periodic recheck picks the objective back up the instant something reactivates, rather than losing it. Also idles without searching while storming, since harvesting is a daytime-only activity.</summary>
@@ -976,14 +1122,31 @@ public class TurtleAgent : MonoBehaviour
         }
     }
 
+    private Coroutine glueSlowCoroutine;
+
+    /// <summary>Applies a temporary slow (see GlueSlowOnHit) for duration seconds, independent of the day/night edge every other buff/debuff is gated on — the first duration-based effect on a turtle. Re-calling before the previous one expires restarts the timer rather than stacking.</summary>
+    public void ApplyGlueSlow(float multiplier, float duration)
+    {
+        if (glueSlowCoroutine != null) StopCoroutine(glueSlowCoroutine);
+        glueSlowCoroutine = StartCoroutine(GlueSlowRoutine(multiplier, duration));
+    }
+
+    private IEnumerator GlueSlowRoutine(float multiplier, float duration)
+    {
+        locomotion.SetGlueDebuffSpeedMultiplier(multiplier);
+        yield return new WaitForSeconds(duration);
+        locomotion.SetGlueDebuffSpeedMultiplier(1f);
+        glueSlowCoroutine = null;
+    }
+
     /// <summary>Cancels an in-progress resource-harvest task the instant night falls — the target objective (targetResourceType) isn't touched, only the transient in-flight task, so it resumes on its own the next time this turtle goes idle during the day (see TrySeekTargetResource). Ground-move/building tasks and aggro are untouched.</summary>
     private void CancelResourceTaskForNight()
     {
         if (isResourceTask) StopAndIdle();
     }
 
-    /// <summary>Cancels an in-progress beeline-home trip the instant night falls, so a turtle that happened to fill up right before dusk responds to the storm (aggro, nest-guard idle) instead of ignoring it to walk its load home — it's still carrying everything it collected, just no longer forced to beeline; CheckPassiveNestDelivery still drops it off in passing whenever normal movement (e.g. nest-guard idle already heads toward the nest while storming) brings it back into range. Leaves an already-in-progress delivery (deliverCoroutine running, i.e. the turtle already arrived and is popping units off) alone rather than cutting it off mid-flight.</summary>
-    private void CancelReturnTripForNight()
+    /// <summary>Cancels an in-progress beeline-home trip — called the instant night falls (so a turtle that happened to fill up right before dusk responds to the storm, aggro/nest-guard idle, instead of ignoring it to walk its load home) and by a fresh ground/building movement command (MoveToPoint/MoveToBuilding — MoveToResource deliberately does NOT call this, see its own doc comment), so the turtle can be redirected mid-trip. Either way it's still carrying everything it collected, just no longer forced to beeline; CheckPassiveNestDelivery still drops it off in passing whenever normal movement (e.g. nest-guard idle already heads toward the nest while storming, or wherever the new order sends it) brings it back into range. Leaves an already-in-progress delivery (deliverCoroutine running, i.e. the turtle already arrived and is popping units off) alone rather than cutting it off mid-flight.</summary>
+    private void CancelReturnTrip()
     {
         if (!isReturningToNest || deliverCoroutine != null) return;
 
@@ -993,13 +1156,16 @@ public class TurtleAgent : MonoBehaviour
         SetFinsPlaying(false);
     }
 
-    /// <summary>Only called while not already aggroed (see Update()), so this doubles as the one place aggroSuppressionTimer ever ticks down — it counts down regardless of day/night (a movement command given well before a storm starts shouldn't leave a stale window active by the time it would matter), but only actually blocks acquisition while it's both storming and still active.</summary>
+    /// <summary>Only called while not already aggroed (see Update()). A live geometric check, not a timer — re-evaluated fresh every frame against this turtle's current distance to moveTargetMarker, so it's never an estimate that can expire early (a dense clump's physics jostling slowing the trip down doesn't matter) or linger after the turtle's already well clear. groundMoveReachable guards against the one edge case a pure distance check can't self-correct: a MoveToPoint destination that turned out unreachable, where this turtle isn't making any progress toward closing that distance at all — without it, such a turtle would be stuck refusing to defend itself forever instead of just sitting there uselessly frozen.</summary>
     private void TryAcquireAggroTarget()
     {
-        if (aggroSuppressionTimer > 0f) aggroSuppressionTimer -= Time.deltaTime;
-
         if (!DayStormCycle.IsStorming) return;
-        if (aggroSuppressionTimer > 0f) return;
+
+        if (isGroundMove && groundMoveReachable
+            && Vector2.Distance(transform.position, moveTargetMarker.position) > aggroUnlockRadius)
+        {
+            return;
+        }
 
         TrashHealth nearest = TrashHealth.FindNearest(transform.position, aggroDistance);
         if (nearest == null) return;
@@ -1046,7 +1212,7 @@ public class TurtleAgent : MonoBehaviour
         shoreUnreachable = false;
 
         bool hasLineOfSight = PathfindingManager.Instance == null
-            || PathfindingManager.Instance.HasLineOfSight(transform.position, target.position);
+            || PathfindingManager.Instance.HasLineOfSight(transform.position, target.position, null, aggroLineOfSightWidth, allowDiagonalSqueeze: true);
 
         if (hasLineOfSight)
         {
@@ -1060,7 +1226,7 @@ public class TurtleAgent : MonoBehaviour
         }
         else if (!isFollowingPath)
         {
-            SetFinsPlaying(BeginPathTo(target));
+            SetFinsPlaying(BeginPathTo(target, aggroChasePathShortenSteps));
         }
     }
 
@@ -1094,7 +1260,14 @@ public class TurtleAgent : MonoBehaviour
         isWaitingAtShore = false;
         shoreUnreachable = false;
 
-        if (hadSavedTask)
+        // A saved ground-move order (a bare MoveToPoint click) is treated as
+        // abandoned rather than resumed — without this, a turtle interrupted
+        // mid-walk to some old clicked point would, after finishing the fight,
+        // head back out to finish that stale walk instead of falling through
+        // to the normal storm-time nest-guard/wander default (see StopAndIdle
+        // below), which is what actually happens for a turtle with no saved
+        // task at all. A saved building-visit order still resumes normally.
+        if (hadSavedTask && !savedTaskIsGroundMove)
         {
             ApplyTask(savedTaskTarget, savedTaskIsGroundMove, savedTaskIsResourceTask);
         }
@@ -1138,7 +1311,12 @@ public class TurtleAgent : MonoBehaviour
         }
         else
         {
-            SetFinsPlaying(BeginPathTo(target));
+            bool pathStarted = BeginPathTo(target);
+            SetFinsPlaying(pathStarted);
+            // Only meaningful for a MoveToPoint order (see aggroUnlockRadius's
+            // own field comment) — harmless to set otherwise since nothing
+            // reads it unless isGroundMove is also true.
+            if (isGroundMove) groundMoveReachable = pathStarted;
         }
 
         UpdateBuildingCollision(target);
@@ -1212,7 +1390,7 @@ public class TurtleAgent : MonoBehaviour
         if (!pathStarted) isReturningToNest = false;
     }
 
-    /// <summary>Runs every frame in place of the normal storm/aggro/idle logic while returning — a returning-with-cargo turtle beelines for the nest, except a storm starting mid-trip cancels it instead (see CancelReturnTripForNight), so this only ever runs during the day or for however briefly it takes night's edge-check to catch up.</summary>
+    /// <summary>Runs every frame in place of the normal storm/aggro/idle logic while returning — a returning-with-cargo turtle beelines for the nest, except a storm starting or a fresh ground/building movement command mid-trip cancels it instead (see CancelReturnTrip), so this only ever runs during the day, for however briefly it takes night's edge-check to catch up, or until the player redirects the turtle elsewhere. A fresh resource selection does not cancel it (see MoveToResource) — it only updates the objective for afterward.</summary>
     private void UpdateReturnToNest()
     {
         Transform nest = TurtleNest.Instance != null ? TurtleNest.Instance.transform : null;
@@ -1268,12 +1446,14 @@ public class TurtleAgent : MonoBehaviour
                     {
                         ResourceManager.Instance?.Add(capturedType, 1);
                         ScoreManager.Instance?.AddScore(1);
+                        TurtleNest.Instance?.PlaySquash();
                     });
             }
             else
             {
                 ResourceManager.Instance?.Add(unit.Type, 1); // no prefab wired yet — still deliver correctly, just instantly
                 ScoreManager.Instance?.AddScore(1);
+                TurtleNest.Instance?.PlaySquash();
             }
 
             yield return new WaitForSeconds(deliveryStaggerDelay);
@@ -1354,14 +1534,27 @@ public class TurtleAgent : MonoBehaviour
     /// itself is currently sitting in deep water (e.g. shoved there by a
     /// physics collision) rather than just its destination.
     /// </summary>
-    private bool BeginPathTo(Transform destination)
+    private bool BeginPathTo(Transform destination, int shortenSteps = 0)
     {
         pathFinalDestination = destination;
+        pathRetargetTimer = 0f;
+        if (destination != null) pathTargetSnapshotPosition = destination.position;
 
         bool hasManager = destination != null && PathfindingManager.Instance != null;
         currentPath = hasManager
             ? FindPathOutOfDeepWaterIfNeeded(destination.position)
             : null;
+
+        // Trims the tail off a chase path (see aggroChasePathShortenSteps) —
+        // if that eats the whole thing, currentPath falls through as a
+        // non-null empty list, which the branches below already treat the
+        // same as "start and goal share a cell": steer straight at the live
+        // destination for this final short hop.
+        if (shortenSteps > 0 && currentPath != null && currentPath.Count > 0)
+        {
+            int trimmedCount = Mathf.Max(0, currentPath.Count - shortenSteps);
+            currentPath = trimmedCount > 0 ? currentPath.GetRange(0, trimmedCount) : new List<Vector3>();
+        }
 
         if (currentPath != null && currentPath.Count > 0)
         {
@@ -1397,7 +1590,7 @@ public class TurtleAgent : MonoBehaviour
         return false;
     }
 
-    /// <summary>Advances through an in-progress path's waypoints as they're reached, converging steering onto the real destination once the path is exhausted. Computes nothing — a path is only ever produced once, by BeginPathTo.</summary>
+    /// <summary>Advances through an in-progress path's waypoints as they're reached, converging steering onto the real destination once the path is exhausted. A path's intermediate waypoints are otherwise only ever computed once, by BeginPathTo — fine for a static destination, but a moving one (chased trash, a harvested Jellyfish) can drift far enough from where the path was aimed that blindly finishing a stale route means overshooting to where it used to be before ever re-steering toward its live position — this periodically checks for that drift and repaths early instead (see pathRetargetCheckInterval/pathRetargetDistance).</summary>
     private void UpdatePathFollowing()
     {
         if (!isFollowingPath) return;
@@ -1411,13 +1604,15 @@ public class TurtleAgent : MonoBehaviour
             return;
         }
 
-        if (isResourceTask && PathfindingManager.Instance != null
-            && Vector2.Distance(transform.position, pathFinalDestination.position) <= resourceLineOfSightShortcutRange
-            && PathfindingManager.Instance.HasLineOfSight(transform.position, pathFinalDestination.position, pathFinalDestination))
+        pathRetargetTimer += Time.deltaTime;
+        if (pathRetargetTimer >= pathRetargetCheckInterval)
         {
-            isFollowingPath = false;
-            steering.SetTarget(pathFinalDestination);
-            return;
+            pathRetargetTimer = 0f;
+            if (Vector2.Distance(pathTargetSnapshotPosition, pathFinalDestination.position) > pathRetargetDistance)
+            {
+                SetFinsPlaying(BeginPathTo(pathFinalDestination, isAggroed ? aggroChasePathShortenSteps : 0));
+                return;
+            }
         }
 
         if (Vector2.Distance(transform.position, pathWaypointMarker.position) > waypointArrivalDistance) return;

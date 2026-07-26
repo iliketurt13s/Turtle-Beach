@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -10,10 +12,24 @@ using UnityEngine;
 /// always affect the whole population, not just future turtles. Wood/Rock
 /// double-drop chances are read live at harvest time instead, since the
 /// amount doesn't depend on which turtle harvested.
+///
+/// Most upgrades are plain numbers, which already survive an island
+/// transition untouched since this whole object is never destroyed. A card
+/// that instead spawns something physical into the world once (e.g.
+/// SeaweedUpgradeCard growing a patch) needs more than that, though —
+/// IslandTransitionController wipes and regenerates the map, taking whatever
+/// was spawned with it — so such a card registers a respawn action via
+/// RegisterPerIslandRespawn, which this class re-runs every time a new island
+/// generates from then on, for the rest of the run.
 /// </summary>
 public class UpgradeManager : MonoBehaviour
 {
     public static UpgradeManager Instance { get; private set; }
+
+    [Tooltip("Same scene IslandGenerator every other manager references — needed so permanent spawn-effect upgrades (see RegisterPerIslandRespawn) know when a new island has generated and their effect should replay.")]
+    [SerializeField] private IslandGenerator islandGenerator;
+
+    private readonly List<Action> perIslandRespawns = new List<Action>();
 
     public float SpeedMultiplier { get; private set; } = 1f;
     public float CritChance { get; private set; } = 0f;
@@ -47,11 +63,23 @@ public class UpgradeManager : MonoBehaviour
     /// <summary>Damage every Sand Pile deals per tick to trash trapped on it, from SandPileCostAndDamageUpgradeCard. Zero (the default) means no Sand Pile deals damage-over-time yet. Read live by SandPile.</summary>
     public int SandPileDotDamagePerTick { get; private set; } = 0;
 
+    /// <summary>Seconds between each Sand Pile damage-over-time tick, set (not additive — see SetSandPileDotTickInterval) by SandPileCostAndDamageUpgradeCard alongside SandPileDotDamagePerTick. Irrelevant until that damage is actually above zero. Read live by SandPile.</summary>
+    public float SandPileDotTickInterval { get; private set; } = 1f;
+
     /// <summary>Cumulative fractional bonus to every Watchtower's fire rate, from WatchtowerFireRateUpgradeCard, e.g. 0.2 = 20% faster. Read live by Watchtower.EffectiveFireInterval.</summary>
     public float WatchtowerFireRateBonus { get; private set; } = 0f;
 
     /// <summary>Cumulative bonus damage added to every Watchtower's SandBall shots, from WatchtowerDamageUpgradeCard. Read live by Watchtower when firing.</summary>
     public int WatchtowerDamageBonus { get; private set; } = 0;
+
+    /// <summary>Cumulative fractional bonus to every piece of trash's burst impulse, from TrashSpeedUpgradeCard (a hazard card), e.g. 0.15 = 15% harder bursts. Read live by TrashAgent.BurstTowardNest.</summary>
+    public float TrashSpeedBonus { get; private set; } = 0f;
+
+    /// <summary>Cumulative bonus damage every piece of trash deals to buildings on collision, from TrashDamageUpgradeCard (a hazard card). Read live by BuildingHealth.OnCollisionEnter2D, alongside Plastic Straw's own per-type tower multiplier.</summary>
+    public int TrashDamageBonus { get; private set; } = 0;
+
+    /// <summary>True once the Box/Pallet death-drop hazard card has been picked. Read live by TrashHealth.Die — governs whether any trash type's configured TrashDefinition.DeathDropPrefabs actually fire.</summary>
+    public bool TrashDeathDropsUnlocked { get; private set; } = false;
 
     private void Awake()
     {
@@ -67,6 +95,27 @@ public class UpgradeManager : MonoBehaviour
     private void OnDestroy()
     {
         if (Instance == this) Instance = null;
+    }
+
+    private void OnEnable()
+    {
+        if (islandGenerator != null) islandGenerator.IslandGenerated += RunPerIslandRespawns;
+    }
+
+    private void OnDisable()
+    {
+        if (islandGenerator != null) islandGenerator.IslandGenerated -= RunPerIslandRespawns;
+    }
+
+    /// <summary>Registers an action to re-run every time a new island generates from now on — for upgrade cards that spawn something physical into the world once (e.g. SeaweedUpgradeCard), which would otherwise only ever exist on whichever island it was picked on, since IslandTransitionController wipes and regenerates the map on every transition. Safe to call more than once (e.g. a stackable card picked repeatedly registers one respawn per pick, so future islands get that many repeats too).</summary>
+    public void RegisterPerIslandRespawn(Action respawnAction)
+    {
+        if (respawnAction != null) perIslandRespawns.Add(respawnAction);
+    }
+
+    private void RunPerIslandRespawns()
+    {
+        foreach (Action respawn in perIslandRespawns) respawn?.Invoke();
     }
 
     public void AddSpeedMultiplier(float multiplier)
@@ -161,6 +210,13 @@ public class UpgradeManager : MonoBehaviour
         Debug.Log($"UpgradeManager: Sand Pile damage-over-time now {SandPileDotDamagePerTick}/tick");
     }
 
+    /// <summary>A direct set rather than additive like the bonuses above — tick speed is a single rate, not a stacking bonus (SandPileCostAndDamageUpgradeCard is itself a one-time, non-stackable pick anyway).</summary>
+    public void SetSandPileDotTickInterval(float seconds)
+    {
+        SandPileDotTickInterval = Mathf.Max(0.05f, seconds);
+        Debug.Log($"UpgradeManager: Sand Pile damage-over-time tick interval now {SandPileDotTickInterval:F2}s");
+    }
+
     public void AddWatchtowerFireRateBonus(float amount)
     {
         WatchtowerFireRateBonus += amount;
@@ -171,6 +227,24 @@ public class UpgradeManager : MonoBehaviour
     {
         WatchtowerDamageBonus += amount;
         Debug.Log($"UpgradeManager: Watchtower damage bonus now +{WatchtowerDamageBonus}");
+    }
+
+    public void AddTrashSpeedBonus(float amount)
+    {
+        TrashSpeedBonus += amount;
+        Debug.Log($"UpgradeManager: trash speed bonus now +{TrashSpeedBonus:P0}");
+    }
+
+    public void AddTrashDamageBonus(int amount)
+    {
+        TrashDamageBonus += amount;
+        Debug.Log($"UpgradeManager: trash damage bonus now +{TrashDamageBonus}");
+    }
+
+    public void UnlockTrashDeathDrops()
+    {
+        TrashDeathDropsUnlocked = true;
+        Debug.Log("UpgradeManager: trash now drops loot on death.");
     }
 
     /// <summary>Called once by a freshly spawned turtle to catch up to whatever's already been picked this run.</summary>
@@ -200,7 +274,7 @@ public class UpgradeManager : MonoBehaviour
             _ => 0f, // Seaweed has no double-drop card yet
         };
 
-        bool doubled = Random.value < chance;
+        bool doubled = UnityEngine.Random.value < chance;
         if (doubled) Debug.Log($"UpgradeManager: double drop! {type} x2");
         return doubled ? 2 : 1;
     }
@@ -215,7 +289,7 @@ public class UpgradeManager : MonoBehaviour
             _ => 0f,
         };
 
-        if (chance <= 0f || Random.value >= chance) return;
+        if (chance <= 0f || UnityEngine.Random.value >= chance) return;
         node.SpawnDrop();
     }
 }

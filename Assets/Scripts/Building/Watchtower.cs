@@ -23,10 +23,13 @@ using UnityEngine;
 /// below notices), or after, since a fresh order simply overrides the
 /// walk-back task the same way any other order overrides any other task.
 /// </summary>
-public class Watchtower : MonoBehaviour
+public class Watchtower : MonoBehaviour, IHasPlacementRange
 {
     [SerializeField] private float targetRadius = 6f;
     [SerializeField] private float fireInterval = 1.5f;
+
+    /// <summary>IHasPlacementRange implementation, so BuildModeController's ghost shows this tower's fire radius while it's selected for placement. No upgrade currently extends Target Radius (unlike the other two range buildings), but reading it live here costs nothing and needs no changes if one's ever added.</summary>
+    public float PlacementRange => targetRadius;
 
     /// <summary>fireInterval shortened by any run-wide bonus from Watchtower-branch upgrade cards (see UpgradeManager.WatchtowerFireRateBonus), e.g. a 0.2 bonus fires every fireInterval / 1.2 seconds — read live, same pattern as Campfire.EffectiveSpeedBonus.</summary>
     private float EffectiveFireInterval => fireInterval / (1f + (UpgradeManager.Instance != null ? UpgradeManager.Instance.WatchtowerFireRateBonus : 0f));
@@ -42,16 +45,25 @@ public class Watchtower : MonoBehaviour
     /// <summary>True from the moment a stationed turtle is dismissed for the day (see DismissForDay) until it's actually confirmed re-parked here at night (see TryStationTurtle, which clears it) — spans both "off doing daytime things" and "currently walking back after being recalled," so Update's vacancy check below doesn't mistake either sub-phase for the player having pulled it away for good and forget linkedTurtle.</summary>
     private bool expectingReturn;
 
-    /// <summary>Called by TurtleAgent.HandleHeadHit on every physical head-bump against this tower — including incidental ones from a turtle just passing by on some other task. Only actually stations the turtle if nobody's already stationed and the tower is genuinely this turtle's current order (CurrentTaskTarget), not just something it happened to collide with — stationing itself works any time (day or storm), so a turtle sent here always gets snapped to dock center on first contact rather than left jammed against the tower's solid collider; only the rotate-and-fire behavior in Update() is storm-gated.</summary>
+    /// <summary>Called by TurtleAgent.HandleHeadHit on every physical head-bump against this tower — including incidental ones from a turtle just passing by on some other task. Only actually stations the turtle if the tower is genuinely this turtle's current order (CurrentTaskTarget), not just something it happened to collide with — stationing itself works any time (day or storm), so a turtle sent here always gets snapped to dock center on first contact rather than left jammed against the tower's solid collider; only the rotate-and-fire behavior in Update() is storm-gated. A different turtle deliberately sent here (the CurrentTaskTarget check already rules out an incidental bump) always takes over rather than being blocked — see EvictCurrentOccupant.</summary>
     public void TryStationTurtle(TurtleAgent turtle)
     {
-        if (linkedTurtle != null || turtle == null) return;
+        if (turtle == null) return;
         if (turtle.CurrentTaskTarget != transform) return;
+
+        if (linkedTurtle != null && linkedTurtle != turtle) EvictCurrentOccupant();
 
         linkedTurtle = turtle;
         expectingReturn = false;
         Vector3 dockPosition = turtleDockPoint != null ? turtleDockPoint.position : transform.position;
         turtle.Park(dockPosition);
+    }
+
+    /// <summary>Frees whichever turtle currently holds this tower so a different one can take over instead of being refused. Unpark() covers an already-stationed occupant — it also clears its task and restores normal physics. ClearTask() covers one still walking back from a RecallForNight order that hasn't arrived yet (Unpark() would no-op on it, since it was never actually parked): without clearing its task too, it would still be genuinely ordered here (CurrentTaskTarget still this tower) and, on finally arriving, would pass TryStationTurtle's own CurrentTaskTarget check and wrongly evict the new occupant that preempted it.</summary>
+    private void EvictCurrentOccupant()
+    {
+        if (linkedTurtle.IsParked) linkedTurtle.Unpark();
+        else linkedTurtle.ClearTask();
     }
 
     private void Update()

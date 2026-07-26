@@ -17,6 +17,7 @@ GameObject:
   - component: {fileID: 1447572353912404203}
   - component: {fileID: 3651242936267090533}
   - component: {fileID: 5849298380084301478}
+  - component: {fileID: -436484135923358765}
   m_Layer: 0
   m_Name: Pallet
   m_TagString: trash
@@ -241,3 +242,69 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TrashDefinition
   displayName: Pallet
   rating: 5
+  towerDamageMultiplier: 1
+  deathDropPrefabs:
+  - {fileID: 3912190900667989718, guid: ee540070de125b54fa260853c132fe92, type: 3}
+  - {fileID: 3912190900667989718, guid: ee540070de125b54fa260853c132fe92, type: 3}
+  - {fileID: 3912190900667989718, guid: ee540070de125b54fa260853c132fe92, type: 3}
+  - {fileID: 3912190900667989718, guid: ee540070de125b54fa260853c132fe92, type: 3}
+  - {fileID: 8325373002651838158, guid: 633700122dc808440bb02f426cd32967, type: 3}
+  deathDropCount: 5
+  deathDropSpawnRadius: 1
+--- !u!114 &-436484135923358765
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 925840000698653082}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0057544065082e34498df8f8196a028f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SquashAndStretch
+  targetOverride: {fileID: 0}
+  duration: 0.2
+  amount: 0.15
+  curve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.12
+      value: -1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.5
+      value: 0.6
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4

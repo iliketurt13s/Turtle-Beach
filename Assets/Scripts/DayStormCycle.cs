@@ -29,10 +29,16 @@ public class DayStormCycle : MonoBehaviour
     [SerializeField] private TrashSpawner trashSpawner;
     [Tooltip("Shown at the end of every storm before the next day begins. If left unassigned, the next day begins immediately with no upgrade choice.")]
     [SerializeField] private UpgradeSelectionUI upgradeSelectionUI;
+    [Tooltip("Runs right after the helpful upgrade card above is picked: pans to the garbage patch, knocks off a health segment, and (once depleted) runs the hazard pick + island transition. If left unassigned, the next day begins immediately with no cutscene.")]
+    [SerializeField] private GarbagePatchCutsceneController garbagePatchCutsceneController;
 
     [Header("Timing")]
     [SerializeField] private float dayDuration = 30f;
     [SerializeField] private float fadeOutDuration = 2f;
+    [Tooltip("Subtracted from Day Duration for just the very first day, when the tutorial actually ran this session (see TutorialManager.DidRunThisSession) — the day clock is already frozen for the whole scripted tutorial (see Update's IsActive guard), so this isn't recovering lost time so much as not piling a full day on top of however long the tutorial itself took, before the first storm arrives.")]
+    [SerializeField] private float firstDayDurationReduction = 30f;
+
+    private bool isFirstDay = true;
 
     [Header("Trash Scaling")]
     [Tooltip("Total plastic 'rating' budget spawned on round 1. Each piece of trash consumes an amount of this budget equal to its own TrashDefinition.Rating, so this controls both how much trash appears and, once the budget is large enough, whether higher-rated (harder) plastic types can afford to show up at all.")]
@@ -41,6 +47,33 @@ public class DayStormCycle : MonoBehaviour
     [SerializeField] private float linearRatingPerRound = 2f;
     [Tooltip("Multiplier applied to the rating budget every round, compounding on top of the linear growth above. Kept modest (e.g. 1.08 = 8%/round) rather than large, since compounding on an already-growing budget is what makes a pure exponential curve feel fine for a while and then suddenly unbeatable — the linear term above carries most of the early-game ramp so this doesn't have to.")]
     [SerializeField] private float ratingGrowthPerRound = 1.08f;
+
+    [Header("Per-Island Escalation")]
+    [Tooltip("Added to Linear Rating Per Round every time a garbage patch is depleted and the run moves to a new island — so each island's round-over-round ramp is steeper than the last one's, even though the round counter (and so the spawned amount) itself resets back to Base Rating Budget.")]
+    [SerializeField] private float linearRatingIncreasePerIsland = 1f;
+    [Tooltip("Added to Rating Growth Per Round every new island. See Linear Rating Increase Per Island.")]
+    [SerializeField] private float ratingGrowthIncreasePerIsland = 0.02f;
+    [Tooltip("Multiplier applied to the rating budget on the final wave before the garbage patch depletes (i.e. the round spawned while it's down to its last segment) — one extra spike of difficulty right before moving to a new island. 1 = no change.")]
+    [SerializeField] private float finalWaveRatingMultiplier = 1.5f;
+
+    [Serializable]
+    private struct TrashDifficultyPreset
+    {
+        public float baseRatingBudget;
+        public float linearRatingPerRound;
+        public float ratingGrowthPerRound;
+    }
+
+    private const string DifficultyIndexKey = "DifficultyIndex";
+
+    [Header("Difficulty Presets")]
+    [Tooltip("Overrides Base Rating Budget/Linear Rating Per Round/Rating Growth Per Round above at Awake, indexed by the difficulty picked on the menu's options screen (0=Easy, 1=Medium, 2=Hard) via PlayerPrefs \"DifficultyIndex\" — see MainMenuController.StartGame. Index 1 (Medium) intentionally matches this class's own defaults above, so picking Medium changes nothing.")]
+    [SerializeField] private TrashDifficultyPreset[] difficultyPresets = new TrashDifficultyPreset[3]
+    {
+        new TrashDifficultyPreset { baseRatingBudget = 5f, linearRatingPerRound = 1.25f, ratingGrowthPerRound = 1.05f },
+        new TrashDifficultyPreset { baseRatingBudget = 8f, linearRatingPerRound = 2f, ratingGrowthPerRound = 1.08f },
+        new TrashDifficultyPreset { baseRatingBudget = 12f, linearRatingPerRound = 3f, ratingGrowthPerRound = 1.12f },
+    };
 
     public int CurrentRound { get; private set; } = 1;
 
@@ -57,6 +90,21 @@ public class DayStormCycle : MonoBehaviour
         IsStorming = false;
         phaseTimer = 0f;
         awaitingUpgradeChoice = false;
+        isFirstDay = true;
+
+        ApplyDifficultyPreset();
+    }
+
+    /// <summary>Runs once, before this island's first BeginDay — overrides the three trash-scaling fields above from whichever difficulty was picked on the menu (defaulting to Medium if the key is missing, e.g. GameScene opened directly in the Editor). No need to re-apply per island: AdvanceToNextIsland only resets CurrentRound, these fields already carry forward as-is.</summary>
+    private void ApplyDifficultyPreset()
+    {
+        if (difficultyPresets == null || difficultyPresets.Length == 0) return;
+
+        int index = Mathf.Clamp(PlayerPrefs.GetInt(DifficultyIndexKey, 1), 0, difficultyPresets.Length - 1);
+        TrashDifficultyPreset preset = difficultyPresets[index];
+        baseRatingBudget = preset.baseRatingBudget;
+        linearRatingPerRound = preset.linearRatingPerRound;
+        ratingGrowthPerRound = preset.ratingGrowthPerRound;
     }
 
     private void OnDestroy()
@@ -76,14 +124,21 @@ public class DayStormCycle : MonoBehaviour
 
     private void Update()
     {
-        if (awaitingUpgradeChoice) return;
+        // TutorialManager.IsActive freezes the day clock the same way
+        // awaitingUpgradeChoice does, so no storm can start mid-tutorial.
+        if (awaitingUpgradeChoice || TutorialManager.IsActive) return;
 
         phaseTimer += Time.deltaTime;
 
-        if (!IsStorming && phaseTimer >= dayDuration)
+        float effectiveDayDuration = isFirstDay && TutorialManager.DidRunThisSession
+            ? Mathf.Max(0f, dayDuration - firstDayDurationReduction)
+            : dayDuration;
+
+        if (!IsStorming && phaseTimer >= effectiveDayDuration)
         {
-            phaseTimer -= dayDuration;
+            phaseTimer -= effectiveDayDuration;
             IsStorming = true;
+            isFirstDay = false;
             StormStarted?.Invoke();
             upgradeSelectionUI?.BeginStormFadeIn();
         }
@@ -114,8 +169,15 @@ public class DayStormCycle : MonoBehaviour
     // day-only behavior (resuming the target resource objective, harvesting,
     // resource respawn, etc.) is gated on it, so turtles would otherwise
     // start moving and collecting again while the player is still looking at
-    // the upgrade cards.
+    // the upgrade cards (or, now, while the garbage-patch cutscene/hazard
+    // pick/island transition below is still running).
     private void HandleUpgradeChoiceComplete()
+    {
+        if (garbagePatchCutsceneController != null) garbagePatchCutsceneController.RunPostStormSequence(HandlePostStormSequenceComplete);
+        else HandlePostStormSequenceComplete();
+    }
+
+    private void HandlePostStormSequenceComplete()
     {
         awaitingUpgradeChoice = false;
         IsStorming = false;
@@ -125,6 +187,28 @@ public class DayStormCycle : MonoBehaviour
     private void BeginDay()
     {
         float ratingBudget = baseRatingBudget * Mathf.Pow(ratingGrowthPerRound, CurrentRound - 1) + linearRatingPerRound * (CurrentRound - 1);
+
+        // GarbagePatch.CurrentHealth == 1 means this round, once survived, is
+        // exactly what depletes it — the last wave before the run moves to a
+        // new island — so spike the budget one extra time right before that
+        // happens. A fresh island's own first round starts with a full-health
+        // patch again, so this never fires on round 1 of a new island.
+        if (GarbagePatch.Instance != null && GarbagePatch.Instance.CurrentHealth == 1)
+        {
+            ratingBudget *= finalWaveRatingMultiplier;
+            Debug.Log($"DayStormCycle: final wave before the garbage patch depletes — rating budget multiplied by {finalWaveRatingMultiplier}.");
+        }
+
         trashSpawner.SpawnRound(ratingBudget);
+    }
+
+    /// <summary>Called by IslandTransitionController when a garbage patch is depleted and the run moves to a new island: resets the round counter (so BeginDay's rating-budget formula starts back at Base Rating Budget, the round-1 amount) but permanently steepens the linear/exponential per-round ramp, so each successive island's difficulty curve climbs faster than the last one's despite the reset.</summary>
+    public void AdvanceToNextIsland()
+    {
+        CurrentRound = 1;
+        linearRatingPerRound += linearRatingIncreasePerIsland;
+        ratingGrowthPerRound += ratingGrowthIncreasePerIsland;
+
+        Debug.Log($"DayStormCycle: advanced to next island — round reset to 1, linearRatingPerRound now {linearRatingPerRound}, ratingGrowthPerRound now {ratingGrowthPerRound:F3}");
     }
 }

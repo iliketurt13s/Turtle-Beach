@@ -1,0 +1,715 @@
+fileFormatVersion: 2
+guid: 5d97c068791b90e40b38db039ceb878e
+TextureImporter:
+  internalIDToNameTable:
+  - first:
+      213: 6496801544343054433
+    second: title_turtle_beach@4x_0
+  - first:
+      213: 377726074362055300
+    second: title_turtle_beach@4x_1
+  - first:
+      213: -8717896002459855951
+    second: title_turtle_beach@4x_2
+  - first:
+      213: 3630202166088815217
+    second: title_turtle_beach@4x_3
+  - first:
+      213: -8275271634072007404
+    second: title_turtle_beach@4x_4
+  - first:
+      213: 5594898711265979410
+    second: title_turtle_beach@4x_5
+  - first:
+      213: -1728508238314832774
+    second: title_turtle_beach@4x_6
+  - first:
+      213: -30900441926289121
+    second: title_turtle_beach@4x_7
+  - first:
+      213: 6682249118489458372
+    second: title_turtle_beach@4x_8
+  - first:
+      213: -8407976628635727707
+    second: title_turtle_beach@4x_9
+  - first:
+      213: 4401727113904836063
+    second: title_turtle_beach@4x_10
+  - first:
+      213: 2007900813150619999
+    second: title_turtle_beach@4x_11
+  - first:
+      213: -8333188916658597725
+    second: title_turtle_beach@4x_12
+  - first:
+      213: 774372616672892943
+    second: title_turtle_beach@4x_13
+  - first:
+      213: 1960047450138400981
+    second: title_turtle_beach@4x_14
+  - first:
+      213: -8587253744428149545
+    second: title_turtle_beach@4x_15
+  - first:
+      213: 5833548952018193389
+    second: title_turtle_beach@4x_16
+  - first:
+      213: -3413375750842507195
+    second: title_turtle_beach@4x_17
+  - first:
+      213: -2031682772773430468
+    second: title_turtle_beach@4x_18
+  - first:
+      213: 8577213914507661026
+    second: title_turtle_beach@4x_19
+  - first:
+      213: 6977098133112945293
+    second: title_turtle_beach@4x_20
+  - first:
+      213: 3155570888180973232
+    second: title_turtle_beach@4x_21
+  - first:
+      213: 2947065044434831548
+    second: title_turtle_beach@4x_22
+  externalObjects: {}
+  serializedVersion: 13
+  mipmaps:
+    mipMapMode: 0
+    enableMipMap: 0
+    sRGBTexture: 1
+    linearTexture: 0
+    fadeOut: 0
+    borderMipMap: 0
+    mipMapsPreserveCoverage: 0
+    alphaTestReferenceValue: 0.5
+    mipMapFadeDistanceStart: 1
+    mipMapFadeDistanceEnd: 3
+  bumpmap:
+    convertToNormalMap: 0
+    externalNormalMap: 0
+    heightScale: 0.25
+    normalMapFilter: 0
+    flipGreenChannel: 0
+  isReadable: 0
+  streamingMipmaps: 0
+  streamingMipmapsPriority: 0
+  vTOnly: 0
+  ignoreMipmapLimit: 0
+  grayScaleToAlpha: 0
+  generateCubemap: 6
+  cubemapConvolution: 0
+  seamlessCubemap: 0
+  textureFormat: 1
+  maxTextureSize: 2048
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 0
+    aniso: 1
+    mipBias: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 1
+  nPOTScale: 0
+  lightmap: 0
+  compressionQuality: 50
+  spriteMode: 2
+  spriteExtrude: 1
+  spriteMeshType: 1
+  alignment: 0
+  spritePivot: {x: 0.5, y: 0.5}
+  spritePixelsToUnits: 16
+  spriteBorder: {x: 0, y: 0, z: 0, w: 0}
+  spriteGenerateFallbackPhysicsShape: 1
+  alphaUsage: 1
+  alphaIsTransparency: 1
+  spriteTessellationDetail: -1
+  textureType: 8
+  textureShape: 1
+  singleChannelComponent: 0
+  flipbookRows: 1
+  flipbookColumns: 1
+  maxTextureSizeSet: 0
+  compressionQualitySet: 0
+  textureFormatSet: 0
+  ignorePngGamma: 0
+  applyGammaDecoding: 0
+  swizzle: 50462976
+  cookieLightType: 0
+  platformSettings:
+  - serializedVersion: 4
+    buildTarget: DefaultTexturePlatform
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 0
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: Standalone
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  spriteSheet:
+    serializedVersion: 2
+    sprites:
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_0
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 0
+        width: 420
+        height: 244
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 168e6c24596492a50800000000000000
+      internalID: 6496801544343054433
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_1
+      rect:
+        serializedVersion: 2
+        x: 215
+        y: 167
+        width: 58
+        height: 66
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 48ac0c40dd3fd3500800000000000000
+      internalID: 377726074362055300
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_2
+      rect:
+        serializedVersion: 2
+        x: 279
+        y: 167
+        width: 122
+        height: 66
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 1b3159076cfc30780800000000000000
+      internalID: -8717896002459855951
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_3
+      rect:
+        serializedVersion: 2
+        x: 43
+        y: 159
+        width: 18
+        height: 6
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 172d39ce2a1116230800000000000000
+      internalID: 3630202166088815217
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_4
+      rect:
+        serializedVersion: 2
+        x: 91
+        y: 159
+        width: 42
+        height: 6
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 41d85470b44582d80800000000000000
+      internalID: -8275271634072007404
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_5
+      rect:
+        serializedVersion: 2
+        x: 147
+        y: 159
+        width: 18
+        height: 6
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 21cac4f1cb215ad40800000000000000
+      internalID: 5594898711265979410
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_6
+      rect:
+        serializedVersion: 2
+        x: 179
+        y: 159
+        width: 26
+        height: 6
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a7c78ef4aea1308e0800000000000000
+      internalID: -1728508238314832774
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_7
+      rect:
+        serializedVersion: 2
+        x: 235
+        y: 159
+        width: 18
+        height: 6
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f19b4973638329ff0800000000000000
+      internalID: -30900441926289121
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_8
+      rect:
+        serializedVersion: 2
+        x: 283
+        y: 159
+        width: 50
+        height: 6
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4c63b305b2e1cbc50800000000000000
+      internalID: 6682249118489458372
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_9
+      rect:
+        serializedVersion: 2
+        x: 339
+        y: 159
+        width: 58
+        height: 6
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 5a8816abdcdd05b80800000000000000
+      internalID: -8407976628635727707
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_10
+      rect:
+        serializedVersion: 2
+        x: 11
+        y: 67
+        width: 78
+        height: 78
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: fddc08e1d73161d30800000000000000
+      internalID: 4401727113904836063
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_11
+      rect:
+        serializedVersion: 2
+        x: 91
+        y: 67
+        width: 78
+        height: 78
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f598f08b62f7ddb10800000000000000
+      internalID: 2007900813150619999
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_12
+      rect:
+        serializedVersion: 2
+        x: 171
+        y: 67
+        width: 78
+        height: 78
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 3a09758d4d09a5c80800000000000000
+      internalID: -8333188916658597725
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_13
+      rect:
+        serializedVersion: 2
+        x: 251
+        y: 67
+        width: 78
+        height: 78
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f08d394cacf1fba00800000000000000
+      internalID: 774372616672892943
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_14
+      rect:
+        serializedVersion: 2
+        x: 331
+        y: 67
+        width: 78
+        height: 78
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 5d8d86865cc733b10800000000000000
+      internalID: 1960047450138400981
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_15
+      rect:
+        serializedVersion: 2
+        x: 15
+        y: 59
+        width: 62
+        height: 6
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 7d497377732f3d880800000000000000
+      internalID: -8587253744428149545
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_16
+      rect:
+        serializedVersion: 2
+        x: 95
+        y: 59
+        width: 70
+        height: 6
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: deb85e84ddde4f050800000000000000
+      internalID: 5833548952018193389
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_17
+      rect:
+        serializedVersion: 2
+        x: 175
+        y: 59
+        width: 22
+        height: 6
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 540a916e6d041a0d0800000000000000
+      internalID: -3413375750842507195
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_18
+      rect:
+        serializedVersion: 2
+        x: 227
+        y: 59
+        width: 18
+        height: 6
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: c3b1f8058430ec3e0800000000000000
+      internalID: -2031682772773430468
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_19
+      rect:
+        serializedVersion: 2
+        x: 275
+        y: 59
+        width: 42
+        height: 6
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 2ee44c87c92680770800000000000000
+      internalID: 8577213914507661026
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_20
+      rect:
+        serializedVersion: 2
+        x: 335
+        y: 59
+        width: 22
+        height: 6
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d8afc3b29c1a3d060800000000000000
+      internalID: 6977098133112945293
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_21
+      rect:
+        serializedVersion: 2
+        x: 387
+        y: 59
+        width: 18
+        height: 6
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 0be379df007dacb20800000000000000
+      internalID: 3155570888180973232
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: title_turtle_beach@4x_22
+      rect:
+        serializedVersion: 2
+        x: 63
+        y: 23
+        width: 322
+        height: 18
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: cb8428f2b0416e820800000000000000
+      internalID: 2947065044434831548
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    outline: []
+    customData: 
+    physicsShape: []
+    bones: []
+    spriteID: b05a5f444c7cdef41a9fc18e0511648c
+    internalID: 0
+    vertices: []
+    indices: 
+    edges: []
+    weights: []
+    secondaryTextures: []
+    spriteCustomMetadata:
+      entries: []
+    nameFileIdTable:
+      title_turtle_beach@4x_0: 6496801544343054433
+      title_turtle_beach@4x_1: 377726074362055300
+      title_turtle_beach@4x_10: 4401727113904836063
+      title_turtle_beach@4x_11: 2007900813150619999
+      title_turtle_beach@4x_12: -8333188916658597725
+      title_turtle_beach@4x_13: 774372616672892943
+      title_turtle_beach@4x_14: 1960047450138400981
+      title_turtle_beach@4x_15: -8587253744428149545
+      title_turtle_beach@4x_16: 5833548952018193389
+      title_turtle_beach@4x_17: -3413375750842507195
+      title_turtle_beach@4x_18: -2031682772773430468
+      title_turtle_beach@4x_19: 8577213914507661026
+      title_turtle_beach@4x_2: -8717896002459855951
+      title_turtle_beach@4x_20: 6977098133112945293
+      title_turtle_beach@4x_21: 3155570888180973232
+      title_turtle_beach@4x_22: 2947065044434831548
+      title_turtle_beach@4x_3: 3630202166088815217
+      title_turtle_beach@4x_4: -8275271634072007404
+      title_turtle_beach@4x_5: 5594898711265979410
+      title_turtle_beach@4x_6: -1728508238314832774
+      title_turtle_beach@4x_7: -30900441926289121
+      title_turtle_beach@4x_8: 6682249118489458372
+      title_turtle_beach@4x_9: -8407976628635727707
+  mipmapLimitGroupName: 
+  pSDRemoveMatte: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

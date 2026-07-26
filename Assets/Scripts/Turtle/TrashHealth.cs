@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -18,18 +19,25 @@ public class TrashHealth : MonoBehaviour
     /// <summary>Every currently-alive piece of trash, so e.g. TurtleNest can check whether any has reached the island/shallows yet before it starts dispensing food.</summary>
     public static IReadOnlyList<TrashHealth> AllTrash => allTrash;
 
+    /// <summary>Raised right before a piece of trash is destroyed by reaching zero health, while its GameObject/components are still valid — mirrors BuildingHealth.Destroyed. Fires for every piece of trash in the scene; subscribers (e.g. BatteryAcidOnDeath) filter to themselves.</summary>
+    public static event Action<TrashHealth> Died;
+
     [SerializeField] private int maxHealth = 3;
     [SerializeField] private int damagePerHit = 1;
 
     private int currentHealth;
     private TrashDefinition definition;
     private Rigidbody2D rb;
+    private GlueSlowOnHit glueSlowOnHit;
+    private SquashAndStretch squashAndStretch;
 
     private void Awake()
     {
         currentHealth = maxHealth;
         definition = GetComponent<TrashDefinition>();
         rb = GetComponent<Rigidbody2D>();
+        glueSlowOnHit = GetComponent<GlueSlowOnHit>();
+        squashAndStretch = GetComponent<SquashAndStretch>();
     }
 
     private void OnEnable()
@@ -47,12 +55,19 @@ public class TrashHealth : MonoBehaviour
         TurtleAgent attacker = other.GetComponentInParent<TurtleAgent>();
         if (attacker == null) return;
 
+        // A turtle the player is actively mouse-steering (selected) shouldn't
+        // attack anything it's dragged into.
+        if (attacker.IsSelected) return;
+
         int baseDamage = damagePerHit + attacker.BonusDamageToTrash;
-        bool isCrit = Random.value < attacker.CritChance;
+        bool isCrit = UnityEngine.Random.value < attacker.CritChance;
         int totalDamage = isCrit ? baseDamage * 2 : baseDamage;
         if (isCrit) Debug.Log($"TrashHealth: critical hit! {totalDamage} damage (base {baseDamage})");
 
         currentHealth -= totalDamage;
+        squashAndStretch?.Play();
+
+        if (glueSlowOnHit != null) glueSlowOnHit.ApplySlow(attacker);
 
         if (attacker.HasCoconutKnockbackBuff && rb != null)
         {
@@ -76,8 +91,14 @@ public class TrashHealth : MonoBehaviour
         if (definition != null)
         {
             ScoreManager.Instance?.AddScore(Mathf.RoundToInt(definition.Rating * 2f));
+
+            if (UpgradeManager.Instance != null && UpgradeManager.Instance.TrashDeathDropsUnlocked)
+            {
+                definition.SpawnDeathDrops(transform.position, GetComponent<TrashAgent>()?.NestTarget);
+            }
         }
 
+        Died?.Invoke(this);
         Destroy(gameObject);
     }
 

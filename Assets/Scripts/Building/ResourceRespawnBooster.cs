@@ -15,7 +15,7 @@ using UnityEngine;
 /// flame) plays for as long as this booster is actively boosting at least
 /// one node, giving the player a visible cue that it's doing something.
 /// </summary>
-public class ResourceRespawnBooster : MonoBehaviour
+public class ResourceRespawnBooster : MonoBehaviour, IHasPlacementRange
 {
     /// <summary>Which building-branch upgrade track (see FertilizerRangeUpgradeCard/PetRockRangeUpgradeCard etc.) this instance reads its live bonuses from — Fertilizer and PetRock are the same script/component but must upgrade independently, and Affected Types alone isn't a reliable way to tell them apart (it's free-form and could be reconfigured), so this is set explicitly per prefab instead.</summary>
     private enum BoosterKind { Fertilizer, PetRock }
@@ -38,6 +38,9 @@ public class ResourceRespawnBooster : MonoBehaviour
 
     /// <summary>range plus any run-wide bonus from this booster's building-branch upgrade cards — read live, same rationale as RespawnSpeedBonus.</summary>
     private float EffectiveRange => range + KindRangeBonus;
+
+    /// <summary>IHasPlacementRange implementation, so BuildModeController's ghost shows this booster's real (upgrade-inclusive) range while it's selected for placement.</summary>
+    public float PlacementRange => EffectiveRange;
 
     private float KindRangeBonus
     {

@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -40,6 +41,10 @@ public class BuildModeController : MonoBehaviour
     [SerializeField, Range(0f, 1f)] private float ghostAlpha = 0.5f;
     [Tooltip("Ghost tint shown when the current tile can't be built on (water, too close to the nest, or occupied by a resource/building/the nest).")]
     [SerializeField] private Color invalidColor = new Color(1f, 0.25f, 0.25f);
+    [Tooltip("Ghost tint flashed briefly when the player clicks to place something they can't currently afford.")]
+    [SerializeField] private Color insufficientFundsColor = new Color(1f, 0f, 0f);
+    [Tooltip("How long the insufficient-funds flash stays up before the ghost goes back to normal position-based tinting.")]
+    [SerializeField] private float insufficientFundsFlashDuration = 1f;
 
     [Header("Cost Display")]
     [Tooltip("No icons, by design — just two plain numbers below the ghost: Wood (brown) and Rock (dark grey).")]
@@ -51,6 +56,12 @@ public class BuildModeController : MonoBehaviour
     [SerializeField] private Font costTextFont;
     [SerializeField] private Color woodCostColor = new Color(0.45f, 0.29f, 0.13f);
     [SerializeField] private Color rockCostColor = new Color(0.3f, 0.3f, 0.3f);
+
+    [Header("Range Indicator")]
+    [Tooltip("Segments used to approximate the range-preview circle shown under the ghost for a buildable implementing IHasPlacementRange (Fertilizer, Pet Rock, Watchtower, Campfire). Higher = smoother circle.")]
+    [SerializeField, Range(8, 128)] private int rangeCircleSegments = 48;
+    [SerializeField] private Color rangeCircleColor = new Color(1f, 1f, 1f, 0.6f);
+    [SerializeField] private float rangeCircleWidth = 0.06f;
 
     [Header("Click Detection")]
     [Tooltip("Max screen-pixel distance between press and release to count as a click rather than a drag.")]
@@ -67,9 +78,15 @@ public class BuildModeController : MonoBehaviour
     private SpriteRenderer ghostRenderer;
     private TextMesh woodCostText;
     private TextMesh rockCostText;
+    private LineRenderer rangeCircleRenderer;
+    private IHasPlacementRange selectedRangeSource;
     private Color validGhostColor;
     private Vector3Int currentCell;
     private Vector2 pressPosition;
+
+    /// <summary>True for the duration of InsufficientFundsFlashRoutine — suppresses UpdateGhostPosition's normal position-based tinting so the red flash isn't overwritten the very next frame.</summary>
+    private bool isFlashingInsufficientFunds;
+    private Coroutine insufficientFundsFlashCoroutine;
 
     private void Awake()
     {
@@ -214,7 +231,7 @@ public class BuildModeController : MonoBehaviour
     {
         UpdateTurtleBedAvailability();
 
-        if (UpgradeSelectionUI.IsActive) return;
+        if (UpgradeSelectionUI.IsActive || GarbagePatchCutsceneController.IsActive || GameOverUI.IsPaused) return;
 
         Keyboard keyboard = Keyboard.current;
         bool shiftHeld = keyboard != null && keyboard.shiftKey.isPressed;
@@ -250,6 +267,26 @@ public class BuildModeController : MonoBehaviour
 
         woodCostText = CreateCostText("WoodCostText", new Vector3(-costTextHorizontalSpacing, -costTextVerticalOffset, 0f), woodCostColor);
         rockCostText = CreateCostText("RockCostText", new Vector3(costTextHorizontalSpacing, -costTextVerticalOffset, 0f), rockCostColor);
+
+        BuildRangeCircle();
+    }
+
+    /// <summary>Builds the (initially hidden) range-preview circle as a looped LineRenderer under the ghost, in local space so it's always centered on wherever the ghost currently sits. See RefreshPlacementRangeCircle for what drives its radius/visibility.</summary>
+    private void BuildRangeCircle()
+    {
+        GameObject circleObject = new GameObject("PlacementRangeCircle");
+        circleObject.transform.SetParent(ghostObject.transform, false);
+
+        rangeCircleRenderer = circleObject.AddComponent<LineRenderer>();
+        rangeCircleRenderer.loop = true;
+        rangeCircleRenderer.useWorldSpace = false;
+        rangeCircleRenderer.positionCount = rangeCircleSegments;
+        rangeCircleRenderer.startWidth = rangeCircleWidth;
+        rangeCircleRenderer.endWidth = rangeCircleWidth;
+        rangeCircleRenderer.startColor = rangeCircleColor;
+        rangeCircleRenderer.endColor = rangeCircleColor;
+        rangeCircleRenderer.material = new Material(Shader.Find("Sprites/Default"));
+        circleObject.SetActive(false);
     }
 
     private TextMesh CreateCostText(string name, Vector3 localPosition, Color color)
@@ -286,6 +323,9 @@ public class BuildModeController : MonoBehaviour
     {
         if (ghostRenderer == null) return;
 
+        selectedRangeSource = selectedBuildable != null ? selectedBuildable.GetComponent<IHasPlacementRange>() : null;
+        if (rangeCircleRenderer != null) rangeCircleRenderer.gameObject.SetActive(false);
+
         SpriteRenderer sourceRenderer = selectedBuildable != null
             ? selectedBuildable.GetComponentInChildren<SpriteRenderer>()
             : null;
@@ -306,12 +346,39 @@ public class BuildModeController : MonoBehaviour
         validGhostColor = color;
         ghostRenderer.color = validGhostColor;
 
-        // Keep the cost numbers drawing above the ghost sprite regardless of
-        // which sorting layer/order the selected buildable's own sprite uses.
+        // Keep the cost numbers (and range circle, if any) drawing above the
+        // ghost sprite regardless of which sorting layer/order the selected
+        // buildable's own sprite uses.
         SetCostTextSorting(woodCostText, sourceRenderer.sortingLayerID, sourceRenderer.sortingOrder + 1);
         SetCostTextSorting(rockCostText, sourceRenderer.sortingLayerID, sourceRenderer.sortingOrder + 1);
+        if (rangeCircleRenderer != null)
+        {
+            rangeCircleRenderer.sortingLayerID = sourceRenderer.sortingLayerID;
+            rangeCircleRenderer.sortingOrder = sourceRenderer.sortingOrder + 1;
+        }
 
         RefreshCostText();
+    }
+
+    /// <summary>Redraws the range-preview circle from the selected buildable's live IHasPlacementRange.PlacementRange every frame the ghost is up, so an upgrade-card range bonus picked mid-run is reflected immediately rather than only after reselecting the buildable. No-op (and hidden) for any buildable that doesn't implement the interface.</summary>
+    private void RefreshPlacementRangeCircle()
+    {
+        if (rangeCircleRenderer == null) return;
+
+        if (selectedRangeSource == null)
+        {
+            if (rangeCircleRenderer.gameObject.activeSelf) rangeCircleRenderer.gameObject.SetActive(false);
+            return;
+        }
+
+        if (!rangeCircleRenderer.gameObject.activeSelf) rangeCircleRenderer.gameObject.SetActive(true);
+
+        float radius = selectedRangeSource.PlacementRange;
+        for (int i = 0; i < rangeCircleSegments; i++)
+        {
+            float angle = i * Mathf.PI * 2f / rangeCircleSegments;
+            rangeCircleRenderer.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f));
+        }
     }
 
     private static void SetCostTextSorting(TextMesh text, int sortingLayerID, int sortingOrder)
@@ -364,6 +431,10 @@ public class BuildModeController : MonoBehaviour
         Vector3 cellCenter = sand.GetCellCenterWorld(currentCell);
         ghostObject.transform.position = cellCenter;
 
+        RefreshPlacementRangeCircle();
+
+        if (isFlashingInsufficientFunds) return;
+
         bool valid = IsPlacementValid(currentCell, cellCenter, sand);
         Color tint = valid ? validGhostColor : invalidColor;
         tint.a = ghostAlpha;
@@ -398,12 +469,17 @@ public class BuildModeController : MonoBehaviour
 
         Vector3 cellCenter = sand.GetCellCenterWorld(currentCell);
         if (!IsPlacementValid(currentCell, cellCenter, sand)) return;
-        if (!ResourceManager.Instance.TrySpend(selectedBuildable.Cost)) return;
+        if (!ResourceManager.Instance.TrySpend(selectedBuildable.Cost))
+        {
+            FlashInsufficientFunds();
+            return;
+        }
 
         selectedBuildable.RegisterPlacement();
         RefreshCostText();
 
         GameObject instance = Instantiate(selectedBuildable.gameObject, cellCenter, Quaternion.identity);
+        instance.GetComponent<SquashAndStretch>()?.Play();
 
         // Instantiate gives this placed instance its own separate
         // BuildableDefinition clone, so link it back to the array entry
@@ -417,6 +493,29 @@ public class BuildModeController : MonoBehaviour
 
         TurtleBed turtleBed = instance.GetComponent<TurtleBed>();
         if (turtleBed != null) turtleBed.Initialize(islandGenerator);
+    }
+
+    /// <summary>Briefly tints the ghost insufficientFundsColor after a click that fails to afford the selected buildable, then hands tinting back to UpdateGhostPosition's normal position-based logic — feedback that the click registered but the player can't afford it yet, rather than the click silently doing nothing.</summary>
+    private void FlashInsufficientFunds()
+    {
+        if (ghostRenderer == null) return;
+
+        if (insufficientFundsFlashCoroutine != null) StopCoroutine(insufficientFundsFlashCoroutine);
+        insufficientFundsFlashCoroutine = StartCoroutine(InsufficientFundsFlashRoutine());
+    }
+
+    private IEnumerator InsufficientFundsFlashRoutine()
+    {
+        isFlashingInsufficientFunds = true;
+
+        Color tint = insufficientFundsColor;
+        tint.a = ghostAlpha;
+        ghostRenderer.color = tint;
+
+        yield return new WaitForSeconds(insufficientFundsFlashDuration);
+
+        isFlashingInsufficientFunds = false;
+        insufficientFundsFlashCoroutine = null;
     }
 
     /// <summary>True if a building can be placed on this cell: on land, far enough from the nest, unoccupied, and — for a Turtle Bed specifically — under the Max Turtle Beds cap. This last check is normally already unreachable for Turtle Bed once UpdateTurtleBedAvailability locks it back out of selection at the cap; kept as a belt-and-suspenders guard against a stray one-frame gap between the count changing and the next Update's poll.</summary>

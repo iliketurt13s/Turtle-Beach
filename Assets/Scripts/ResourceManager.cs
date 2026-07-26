@@ -78,6 +78,18 @@ public class ResourceManager : MonoBehaviour
         ResourceChanged?.Invoke(type, counts[type]);
     }
 
+    /// <summary>Zeroes every resource count, firing ResourceChanged per type so ResourceHUD's already-shown counters visibly snap to 0. Used by IslandTransitionController when moving to a new island — score and upgrades are deliberately left untouched elsewhere.</summary>
+    public void ResetAll()
+    {
+        foreach (ResourceType type in new List<ResourceType>(counts.Keys))
+        {
+            if (counts[type] == 0) continue;
+
+            counts[type] = 0;
+            ResourceChanged?.Invoke(type, 0);
+        }
+    }
+
     public bool CanAfford(IReadOnlyList<ResourceCost> costs)
     {
         foreach (ResourceCost cost in costs)

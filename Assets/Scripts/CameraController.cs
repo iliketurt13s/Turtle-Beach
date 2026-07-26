@@ -1,3 +1,5 @@
+using System;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -30,6 +32,8 @@ public class CameraController : MonoBehaviour
     private Vector2 lastMousePosition;
     private bool isDragging;
     private float cumulativeDragDistance;
+    private Coroutine panCoroutine;
+    private Transform followTarget;
 
     /// <summary>The orthographic size Drag Speed was tuned at, captured once so drag scaling (see HandleDrag) is relative rather than needing every scene to happen to start at some fixed absolute zoom.</summary>
     private float referenceOrthographicSize;
@@ -57,12 +61,21 @@ public class CameraController : MonoBehaviour
     {
         HandleZoom();
         HandleDrag();
+
+        if (followTarget != null)
+        {
+            Vector3 position = transform.position;
+            position.x = followTarget.position.x;
+            position.y = followTarget.position.y;
+            transform.position = position;
+        }
+
         ClampToMapBounds();
     }
 
     private void HandleZoom()
     {
-        if (BuildModeController.IsActive || UpgradeSelectionUI.IsActive) return;
+        if (BuildModeController.IsActive || UpgradeSelectionUI.IsActive || GarbagePatchCutsceneController.IsActive) return;
 
         Mouse mouse = Mouse.current;
         if (mouse == null) return;
@@ -78,7 +91,7 @@ public class CameraController : MonoBehaviour
 
     private void HandleDrag()
     {
-        if (UpgradeSelectionUI.IsActive) return;
+        if (UpgradeSelectionUI.IsActive || GarbagePatchCutsceneController.IsActive) return;
 
         Mouse mouse = Mouse.current;
         if (mouse == null) return;
@@ -118,6 +131,64 @@ public class CameraController : MonoBehaviour
         Vector3 move = new Vector3(-delta.x, -delta.y, 0f) * (dragSpeed * zoomScale * Time.unscaledDeltaTime);
         transform.position += move;
     }
+
+    /// <summary>Scripted move to a world position over duration, used by GarbagePatchCutsceneController to pan out to the garbage patch and back. Not gated on this class's own IsActive-style flags — the caller (GarbagePatchCutsceneController) is responsible for suspending player input for the duration via its own IsActive flag, checked by HandleZoom/HandleDrag above.</summary>
+    public void PanTo(Vector3 targetWorldPosition, float duration, Action onComplete)
+    {
+        if (panCoroutine != null) StopCoroutine(panCoroutine);
+        panCoroutine = StartCoroutine(PanRoutine(targetWorldPosition, duration, onComplete));
+    }
+
+    private IEnumerator PanRoutine(Vector3 target, float duration, Action onComplete)
+    {
+        Vector3 start = transform.position;
+        float elapsed = 0f;
+        float safeDuration = Mathf.Max(duration, 0.01f);
+
+        while (elapsed < safeDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / safeDuration));
+            transform.position = Vector3.Lerp(start, target, t);
+            yield return null;
+        }
+
+        transform.position = target;
+        panCoroutine = null;
+        onComplete?.Invoke();
+    }
+
+    /// <summary>Same easing/duration shape as PanTo, but eases toward target's LIVE position every frame instead of a fixed snapshot — for panning toward something that keeps moving (e.g. the orbiting GarbagePatch), so the tween converges on wherever the target actually ends up rather than a stale point captured back when the pan started. Doesn't keep tracking once duration elapses — call BeginFollowing right after if the camera should stay locked on afterward.</summary>
+    public void PanToFollowing(Transform target, float duration, Action onComplete)
+    {
+        if (panCoroutine != null) StopCoroutine(panCoroutine);
+        panCoroutine = StartCoroutine(PanFollowingRoutine(target, duration, onComplete));
+    }
+
+    private IEnumerator PanFollowingRoutine(Transform target, float duration, Action onComplete)
+    {
+        Vector3 start = transform.position;
+        float elapsed = 0f;
+        float safeDuration = Mathf.Max(duration, 0.01f);
+
+        while (elapsed < safeDuration && target != null)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / safeDuration));
+            Vector3 liveTarget = new Vector3(target.position.x, target.position.y, start.z);
+            transform.position = Vector3.Lerp(start, liveTarget, t);
+            yield return null;
+        }
+
+        panCoroutine = null;
+        onComplete?.Invoke();
+    }
+
+    /// <summary>Continuously snaps this camera's X/Y onto target's position every frame (preserving this camera's own Z) until StopFollowing is called — used to keep the orbiting GarbagePatch centered for the whole cutscene hold period, since a one-shot pan would otherwise leave it drifting off-screen by the time the hold ends.</summary>
+    public void BeginFollowing(Transform target) => followTarget = target;
+
+    /// <summary>Stops BeginFollowing's per-frame tracking.</summary>
+    public void StopFollowing() => followTarget = null;
 
     /// <summary>
     /// Hard constraint (on top of Handle Zoom's own min/max Zoom preference):

@@ -11,17 +11,32 @@ using UnityEngine;
 /// down while at least one piece of trash is currently touching it (see
 /// originalDamping.Count in Update) — sitting empty doesn't erode it, so the
 /// countdown pauses (not resets) the moment the last piece of trash leaves.
+/// Deliberately has no BuildingHealth (it doesn't take contact damage from
+/// trash the way a wall/Watchtower does — it wears out on its own timer
+/// instead), so it isn't swept up by IslandTransitionController's
+/// BuildingHealth.AllBuildings cleanup; AllSandPiles below is its own
+/// registry (same Awake/OnDestroy pattern as TurtleBed.AllBeds) so that
+/// transition can destroy leftover sand piles too instead of leaving them
+/// behind on the old island's cleared ground.
 /// </summary>
 public class SandPile : MonoBehaviour
 {
+    private static readonly List<SandPile> allSandPiles = new List<SandPile>();
+
+    /// <summary>Every currently-alive sand pile, so IslandTransitionController can destroy leftovers when moving to a new island (mirrors BuildingHealth.AllBuildings/TurtleBed.AllBeds).</summary>
+    public static IReadOnlyList<SandPile> AllSandPiles => allSandPiles;
+
     [SerializeField] private float dampingIncrease = 5f;
     [Tooltip("Seconds of trash contact this sand pile can withstand before it's worn away and destroyed. Only counts down while trash is actually touching it (see class doc comment) — sitting empty doesn't wear it out.")]
     [SerializeField] private float durationBeforeDestroyed = 20f;
-    [Tooltip("Seconds between each damage-over-time tick on trapped trash, once SandPileCostAndDamageUpgradeCard has been picked (see UpgradeManager.SandPileDotDamagePerTick).")]
-    [SerializeField] private float dotTickInterval = 1f;
+    [Tooltip("Fallback seconds between each damage-over-time tick, only used if UpgradeManager isn't available. Once SandPileCostAndDamageUpgradeCard has been picked, EffectiveDotTickInterval reads its live-set UpgradeManager.SandPileDotTickInterval instead, same pattern as EffectiveDampingIncrease.")]
+    [SerializeField, Min(0.05f)] private float dotTickInterval = 1f;
 
     /// <summary>dampingIncrease plus any run-wide bonus from Sand Pile-branch upgrade cards (see UpgradeManager.SandPileDampingBonus) — read live, same pattern as Campfire.EffectiveSpeedBonus.</summary>
     private float EffectiveDampingIncrease => dampingIncrease + (UpgradeManager.Instance != null ? UpgradeManager.Instance.SandPileDampingBonus : 0f);
+
+    /// <summary>UpgradeManager.SandPileDotTickInterval (set by SandPileCostAndDamageUpgradeCard, see class doc comment) if available, else this instance's own Inspector-authored fallback — read live every tick rather than cached, so a mid-run tick-speed pick applies to already-placed piles too.</summary>
+    private float EffectiveDotTickInterval => UpgradeManager.Instance != null ? UpgradeManager.Instance.SandPileDotTickInterval : dotTickInterval;
 
     private readonly Dictionary<Rigidbody2D, float> originalDamping = new Dictionary<Rigidbody2D, float>();
     private readonly Dictionary<Rigidbody2D, float> dotTimers = new Dictionary<Rigidbody2D, float>();
@@ -30,6 +45,11 @@ public class SandPile : MonoBehaviour
     private void Awake()
     {
         remainingDuration = durationBeforeDestroyed;
+    }
+
+    private void OnEnable()
+    {
+        allSandPiles.Add(this);
     }
 
     private void Update()
@@ -63,6 +83,7 @@ public class SandPile : MonoBehaviour
         // removes from originalDamping/dotTimers mid-loop, so enumerating the
         // live dictionary here would throw "Collection was modified".
         List<Rigidbody2D> rbs = new List<Rigidbody2D>(originalDamping.Keys);
+        float tickInterval = EffectiveDotTickInterval;
 
         foreach (Rigidbody2D rb in rbs)
         {
@@ -77,9 +98,9 @@ public class SandPile : MonoBehaviour
             if (!originalDamping.ContainsKey(rb)) continue;
 
             float timer = (dotTimers.TryGetValue(rb, out float t) ? t : 0f) + Time.deltaTime;
-            if (timer >= dotTickInterval)
+            if (timer >= tickInterval)
             {
-                timer -= dotTickInterval;
+                timer -= tickInterval;
                 rb.GetComponentInParent<TrashHealth>()?.ApplyDamage(damagePerTick);
             }
 
@@ -121,6 +142,8 @@ public class SandPile : MonoBehaviour
 
     private void OnDisable()
     {
+        allSandPiles.Remove(this);
+
         foreach (KeyValuePair<Rigidbody2D, float> entry in originalDamping)
         {
             if (entry.Key != null) entry.Key.linearDamping = entry.Value;

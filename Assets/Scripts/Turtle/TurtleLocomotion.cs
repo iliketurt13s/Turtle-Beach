@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -35,9 +36,13 @@ public class TurtleLocomotion : MonoBehaviour
     private float permanentSpeedMultiplier = 1f;
     private float campfireSpeedMultiplier = 1f;
     private float temporaryBuffSpeedMultiplier = 1f;
+    private float glueDebuffSpeedMultiplier = 1f;
 
     /// <summary>The fins driving propulsion, so other systems (e.g. idle/select logic) can pause/resume the same set without re-wiring it separately.</summary>
     public IReadOnlyList<LimbOscillator> PropellingFins => propellingFins;
+
+    /// <summary>Raised in FixedUpdate exactly when a forward impulse is actually applied (see FixedUpdate) — lets other systems (e.g. TurtleHeadHitbox, guaranteeing every impulse gets a fresh shot at registering a hit) key off the same "stroke landed" moment instead of duplicating the fin-stroke-aggregation logic themselves.</summary>
+    public event Action ImpulseApplied;
 
     private Rigidbody2D rb;
     private TurtleTargetSteering steering;
@@ -45,11 +50,51 @@ public class TurtleLocomotion : MonoBehaviour
 
     public ParticleSystem finParticle1;
     public ParticleSystem finParticle2;
+    [Tooltip("Continuous trail particle system (e.g. a wake/sand trail), recolored by surface alongside the fin splash particles above.")]
+    public ParticleSystem trailParticle;
+
+    [Header("Color By Surface")]
+    [Tooltip("Fin splash + trail particle color range while swimming, in shallow or deep water — each particle picks a random color between these two, instead of every particle being the exact same flat color.")]
+    [SerializeField] private Color waterParticleColorMin = Color.white;
+    [SerializeField] private Color waterParticleColorMax = Color.white;
+    [Tooltip("Fin splash + trail particle color range while on land (sand). Same two-color randomization as the water range above.")]
+    [SerializeField] private Color landParticleColorMin = Color.white;
+    [SerializeField] private Color landParticleColorMax = Color.white;
+
+    private bool? wasOnLand;
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
         steering = GetComponent<TurtleTargetSteering>();
+    }
+
+    private void Update()
+    {
+        bool onLand = PathfindingManager.Instance != null && PathfindingManager.Instance.IsOnLand(transform.position);
+        if (wasOnLand.HasValue && wasOnLand.Value == onLand) return;
+
+        wasOnLand = onLand;
+        ApplyParticleColor(onLand ? landParticleColorMin : waterParticleColorMin, onLand ? landParticleColorMax : waterParticleColorMax);
+    }
+
+    private void ApplyParticleColor(Color colorMin, Color colorMax)
+    {
+        // The two-Color constructor puts the MinMaxGradient in "Two Colors" mode, so each
+        // particle samples a random point between colorMin/colorMax rather than every
+        // particle rendering the exact same flat color.
+        ParticleSystem.MinMaxGradient range = new ParticleSystem.MinMaxGradient(colorMin, colorMax);
+        SetParticleColor(finParticle1, range);
+        SetParticleColor(finParticle2, range);
+        SetParticleColor(trailParticle, range);
+    }
+
+    private static void SetParticleColor(ParticleSystem particle, ParticleSystem.MinMaxGradient range)
+    {
+        if (particle == null) return;
+
+        ParticleSystem.MainModule main = particle.main;
+        main.startColor = range;
     }
 
     private void OnEnable()
@@ -91,6 +136,7 @@ public class TurtleLocomotion : MonoBehaviour
             finParticle2.Play();
 
             pendingImpulses = 0;
+            ImpulseApplied?.Invoke();
         }
     }
 
@@ -118,10 +164,17 @@ public class TurtleLocomotion : MonoBehaviour
         RecalculateBuffSpeedMultiplier();
     }
 
-    /// <summary>Recombines the three buff layers (permanent x campfire x temporary — speedMultiplier is deliberately not part of this, see class doc comment) into one product and pushes it to every propelling fin's stroke rate and to this turtle's turn rate, so different buffs stack multiplicatively with each other exactly as they did back when they scaled impulseForce instead.</summary>
+    /// <summary>Independent layer for a trash-inflicted slow (e.g. Glue Bottle), separate from the food-buff temporary layer above since the two are unrelated (one is a debuff with its own independent timer, not tied to the day/night edge). 1 = no debuff active.</summary>
+    public void SetGlueDebuffSpeedMultiplier(float multiplier)
+    {
+        glueDebuffSpeedMultiplier = multiplier;
+        RecalculateBuffSpeedMultiplier();
+    }
+
+    /// <summary>Recombines the buff layers (permanent x campfire x temporary x glue debuff — speedMultiplier is deliberately not part of this, see class doc comment) into one product and pushes it to every propelling fin's stroke rate and to this turtle's turn rate, so different buffs stack multiplicatively with each other exactly as they did back when they scaled impulseForce instead.</summary>
     private void RecalculateBuffSpeedMultiplier()
     {
-        float combined = permanentSpeedMultiplier * campfireSpeedMultiplier * temporaryBuffSpeedMultiplier;
+        float combined = permanentSpeedMultiplier * campfireSpeedMultiplier * temporaryBuffSpeedMultiplier * glueDebuffSpeedMultiplier;
 
         foreach (LimbOscillator fin in propellingFins)
         {

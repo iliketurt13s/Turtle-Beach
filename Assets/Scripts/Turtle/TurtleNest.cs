@@ -90,6 +90,13 @@ public class TurtleNest : MonoBehaviour
 
     public bool IsDestroyed { get; private set; }
 
+    private SquashAndStretch squashAndStretch;
+
+    private void Awake()
+    {
+        squashAndStretch = GetComponent<SquashAndStretch>();
+    }
+
     private void OnEnable()
     {
         Instance = this;
@@ -273,8 +280,13 @@ public class TurtleNest : MonoBehaviour
         }
     }
 
+    /// <summary>Called by TurtleAgent.DeliverCarriedResources as each delivered unit's pop-effect lands here, and by SpawnFoodFlight as each food unit heads back out — covers "delivered to/from" the nest with one shared entry point.</summary>
+    public void PlaySquash() => squashAndStretch?.Play();
+
     private void SpawnFoodFlight(ResourceManager.ResourceType type, TurtleAgent turtle)
     {
+        PlaySquash();
+
         Vector3 targetPosition = turtle.transform.position;
 
         if (foodDistributionPopEffectPrefab != null)

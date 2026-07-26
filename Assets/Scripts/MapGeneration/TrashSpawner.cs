@@ -11,24 +11,42 @@ using UnityEngine.Tilemaps;
 /// piece count: every spawn is a random prefab from Trash Prefabs whose own
 /// TrashDefinition.Rating is affordable within what's left of the budget, so
 /// harder (higher-rated) plastic types naturally start appearing once the
-/// budget grows large enough to afford them.
+/// budget grows large enough to afford them. The number of clumps a round is
+/// split across also skews higher as the budget grows (see Cluster Count
+/// Budget Reference/Bias), so a bigger, plastic-heavy round tends to spread
+/// out into more clusters rather than just a few denser ones.
 /// </summary>
 public class TrashSpawner : MonoBehaviour
 {
+    /// <summary>Scene-wide singleton so upgrade cards (which live as prefab assets, not scene objects) can call Unlock without a serialized scene reference — mirrors BuildModeController.Instance.</summary>
+    public static TrashSpawner Instance { get; private set; }
+
     [Header("Island Reference")]
     [SerializeField] private IslandGenerator islandGenerator;
 
     [Header("Trash")]
-    [Tooltip("Trash prefab variants to choose from at random.")]
+    [Tooltip("Every trash prefab that could ever spawn, locked or not. Cycle/round picking (see PickAffordablePrefab) only ever considers the subset currently unlocked (see Initially Unlocked/Unlock).")]
     [SerializeField] private GameObject[] trashPrefabs;
+    [Tooltip("Trash prefabs spawnable from game start (e.g. Bottle/Box/Pallet). Everything else in Trash Prefabs begins locked; call Unlock to make more available later, e.g. from a hazard upgrade card.")]
+    [SerializeField] private GameObject[] initiallyUnlocked;
+
+    [Tooltip("How many times more likely a hazard-unlocked trash type (not in Initially Unlocked, but Unlocked later via a hazard upgrade card) is picked relative to a starting trash type, on top of the rarity weighting below. 1 = no preference.")]
+    [SerializeField, Min(1f)] private float hazardUnlockedWeightMultiplier = 2f;
+
+    private HashSet<GameObject> unlockedTrash;
+    private HashSet<GameObject> initiallyUnlockedSet;
     [Tooltip("How strongly rarer/smaller trash is favored over larger, higher-rated trash (e.g. a Pallet) whenever both are affordable within what's left of the round's budget. 0 = every affordable prefab is equally likely regardless of cost, so a Pallet gets picked exactly as often as a Bottle despite eating far more of the budget per spawn — the old behavior, and why pallets used to dominate. Higher values weight selection by 1/rating^this, so cheaper (smaller) trash is picked far more often and a round tends to produce many small pieces instead of being dominated by a couple of expensive ones.")]
     [SerializeField, Min(0f)] private float smallTrashBias = 1.5f;
 
     [Header("Clumping")]
-    [Tooltip("Fewest loose clumps a round's trash can be split across (inclusive). Rolled fresh per round between this and Max Cluster Count.")]
+    [Tooltip("Fewest loose clumps a round's trash can be split across (inclusive). Rolled fresh per round between this and Max Cluster Count, skewed toward the max as the round's rating budget grows (see Cluster Count Budget Reference/Bias below).")]
     [SerializeField, Min(1)] private int minClusterCount = 2;
     [Tooltip("Most loose clumps a round's trash can be split across (inclusive). Rolled fresh per round between Min Cluster Count and this.")]
     [SerializeField, Min(1)] private int maxClusterCount = 4;
+    [Tooltip("Rating budget at which the cluster count roll is fully skewed toward Max Cluster Count. A round with this much budget or more almost always rolls near the max; a round with little budget stays close to a uniform roll between Min and Max.")]
+    [SerializeField, Min(0.01f)] private float clusterCountBudgetReference = 40f;
+    [Tooltip("How strongly a higher rating budget pulls the cluster count roll toward Max Cluster Count. 0 = no bias at all — a plain uniform roll between Min and Max regardless of budget (the old behavior). Higher = a big, plastic-heavy round reaches the max cluster count far more reliably instead of still sometimes landing near the min.")]
+    [SerializeField, Min(0f)] private float clusterCountBudgetBias = 2f;
     [Tooltip("How far (in tiles) a piece of trash may land from its cluster's center cell.")]
     [SerializeField, Range(0f, 10f)] private float clusterRadius = 3f;
     [Tooltip("Preferred distance (in tiles) between cluster centers — a soft target, not a hard minimum: a candidate closer than this is penalized (see Separation Bias), not rejected outright, so clusters usually spread out to about this far apart but can still occasionally land closer.")]
@@ -50,6 +68,46 @@ public class TrashSpawner : MonoBehaviour
 
     /// <summary>Safety cap on spawn attempts so a misconfigured (e.g. all-zero-rating) prefab pool can't loop forever.</summary>
     private const int MaxSpawnsPerRound = 500;
+
+    private void Awake()
+    {
+        if (Instance != null && Instance != this)
+        {
+            Debug.LogWarning("TrashSpawner: duplicate instance in scene, destroying this one.");
+            Destroy(gameObject);
+            return;
+        }
+
+        Instance = this;
+
+        unlockedTrash = new HashSet<GameObject>();
+        initiallyUnlockedSet = new HashSet<GameObject>();
+        if (initiallyUnlocked != null)
+        {
+            foreach (GameObject prefab in initiallyUnlocked)
+            {
+                unlockedTrash.Add(prefab);
+                initiallyUnlockedSet.Add(prefab);
+            }
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+    }
+
+    /// <summary>Makes prefab spawnable from now on (e.g. from a hazard upgrade card). No-op if already unlocked.</summary>
+    public void Unlock(GameObject prefab)
+    {
+        if (prefab != null) unlockedTrash.Add(prefab);
+    }
+
+    /// <summary>Tracks an externally-instantiated trash instance (e.g. TrashDefinition.SpawnDeathDrops) in the same round-tracking list SpawnRound uses, so AnyTrashAlive/BeginFadeOutAndClear correctly account for it too instead of leaving it to wander after the storm ends.</summary>
+    public void RegisterExternalSpawn(GameObject trash)
+    {
+        if (trash != null) spawnedTrash.Add(trash);
+    }
 
     public void SpawnRound(float ratingBudget)
     {
@@ -80,7 +138,16 @@ public class TrashSpawner : MonoBehaviour
         Debug.Log($"TrashSpawner: seed = {seed}, rating budget = {ratingBudget} (check 'Use Fixed Seed' and set this value to reproduce this trash layout)");
         System.Random rng = new System.Random(seed);
 
-        int rolledClusterCount = rng.Next(minClusterCount, Mathf.Max(minClusterCount, maxClusterCount) + 1);
+        // Uniform between Min/Max would give a plastic-heavy round the same
+        // spread of possible cluster counts as a light one. Instead roll
+        // u^(1/k) rather than a plain u — for k > 1 that biases the result
+        // toward 1 (i.e. toward Max Cluster Count), and k itself grows with
+        // how far this round's budget sits past the reference point, so a
+        // bigger round more reliably nets more, bigger clumps of trash.
+        int clusterRange = Mathf.Max(minClusterCount, maxClusterCount) - minClusterCount;
+        float budgetRatio = ratingBudget / clusterCountBudgetReference;
+        float biasExponent = 1f / (1f + clusterCountBudgetBias * budgetRatio);
+        int rolledClusterCount = minClusterCount + Mathf.RoundToInt(Mathf.Pow((float)rng.NextDouble(), biasExponent) * clusterRange);
         int clusters = Mathf.Max(1, Mathf.Min(rolledClusterCount, waterCells.Count));
         List<Vector3Int> clusterCenters = new List<Vector3Int>();
         for (int i = 0; i < clusters; i++)
@@ -201,9 +268,12 @@ public class TrashSpawner : MonoBehaviour
     /// Picks a prefab whose rating fits within remainingBudget, weighted by
     /// 1/rating^smallTrashBias so smaller (lower-rated) trash is favored over
     /// larger trash rather than every affordable option being equally likely
-    /// (see smallTrashBias). If allowOverBudget is true (first spawn of the
-    /// round) and nothing fits, falls back to the single cheapest prefab so a
-    /// round can never spawn zero trash just because the starting budget is
+    /// (see smallTrashBias), further multiplied by hazardUnlockedWeightMultiplier
+    /// for anything not in Initially Unlocked (i.e. unlocked later via a hazard
+    /// upgrade card) so newly-unlocked trash types show up more than their raw
+    /// rarity alone would suggest. If allowOverBudget is true (first spawn of
+    /// the round) and nothing fits, falls back to the single cheapest prefab so
+    /// a round can never spawn zero trash just because the starting budget is
     /// smaller than every plastic type's rating.
     /// </summary>
     private GameObject PickAffordablePrefab(float remainingBudget, bool allowOverBudget, System.Random rng)
@@ -216,12 +286,13 @@ public class TrashSpawner : MonoBehaviour
 
         foreach (GameObject prefab in trashPrefabs)
         {
-            if (prefab == null) continue;
+            if (prefab == null || (unlockedTrash != null && !unlockedTrash.Contains(prefab))) continue;
 
             float rating = GetRating(prefab);
             if (rating <= remainingBudget)
             {
                 float weight = 1f / Mathf.Pow(Mathf.Max(rating, 0.01f), smallTrashBias);
+                if (initiallyUnlockedSet != null && !initiallyUnlockedSet.Contains(prefab)) weight *= hazardUnlockedWeightMultiplier;
                 affordable.Add(prefab);
                 weights.Add(weight);
                 totalWeight += weight;

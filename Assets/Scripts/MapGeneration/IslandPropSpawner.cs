@@ -95,6 +95,8 @@ public class IslandPropSpawner : MonoBehaviour
 
         int guaranteed = SpawnGuaranteedMinimums(sandTilemap, landCells, usedCells, rng, parent);
         SpawnCategory(natureObjects, Mathf.Max(0, spawnCount - guaranteed), sandTilemap, landCells, usedCells, rng, parent);
+
+        Debug.Log($"IslandPropSpawner: spawned {spawnedProps.Count} resources across {landCells.Count} eligible land cells (target was {spawnCount} from {resourceDensity:P0} density).");
     }
 
     /// <summary>Groups Nature Objects by their ResourceNode.ResourceType and spawns at least Min Spawns Per Resource Type of each represented type (picking randomly among just that type's own prefab variants), so the general random fill afterward (see SpawnCategory) can never leave a type at zero, or close to it, purely by chance. Prefabs missing a ResourceNode component aren't grouped by anything and are left entirely to the general fill. Returns how many were actually spawned, so the caller can subtract it from the remaining density-based budget.</summary>

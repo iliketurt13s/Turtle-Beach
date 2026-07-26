@@ -6,7 +6,6 @@ using UnityEngine;
 /// 4-bit bitmask of which cardinal neighbors also have a wall, and refreshes
 /// those neighbors too whenever it's placed or removed.
 /// </summary>
-[RequireComponent(typeof(SpriteRenderer))]
 public class WallAutoTile : MonoBehaviour
 {
     private const int North = 1;
@@ -18,12 +17,15 @@ public class WallAutoTile : MonoBehaviour
         "Index 0 = isolated post, index 15 = connected on all 4 sides. Leave a slot empty to fall back to index 0.")]
     [SerializeField] private Sprite[] wallSprites = new Sprite[16];
 
+    [Tooltip("SpriteRenderer to update. Defaults to one on this same GameObject if left unassigned — set this to a child visuals SpriteRenderer instead if the graphics live on a separate child from this script/the collider (e.g. so SquashAndStretch's Target Override can punch the visuals without resizing the collider).")]
+    [SerializeField] private SpriteRenderer spriteRendererOverride;
+
     private SpriteRenderer spriteRenderer;
     private Vector3Int cell;
 
     private void Awake()
     {
-        spriteRenderer = GetComponent<SpriteRenderer>();
+        spriteRenderer = spriteRendererOverride != null ? spriteRendererOverride : GetComponent<SpriteRenderer>();
     }
 
     /// <summary>Called by whatever placed this wall (see BuildModeController.TryPlace) with its grid cell.</summary>

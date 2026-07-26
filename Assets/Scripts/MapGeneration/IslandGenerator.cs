@@ -109,6 +109,29 @@ public class IslandGenerator : MonoBehaviour
     [Tooltip("Check this and set Seed above to reproduce a specific layout logged from a previous run.")]
     [SerializeField] private bool useFixedSeed = false;
 
+    [Serializable]
+    private struct IslandSizePreset
+    {
+        public int width;
+        public int height;
+        [Range(0.05f, 0.9f)] public float targetLandFraction;
+        [Tooltip("Overrides Blob Count/Blob Min Radius/Blob Max Radius below — Target Land Fraction is only a goal CalibrateLandThreshold aims for, but it can't manufacture land the blob field never reaches. A bigger map needs bigger/more blobs too, or the actual achieved area caps out near the same absolute ceiling regardless of map size (see IslandGenerator's new area log in GenerateIsland).")]
+        public int blobCount;
+        public float blobMinRadius;
+        public float blobMaxRadius;
+    }
+
+    private const string GameModeIndexKey = "GameModeIndex";
+
+    [Header("Game Mode Presets")]
+    [Tooltip("Overrides Width/Height/Target Land Fraction/blob geometry above at Awake (before the very first generation), indexed by the game mode picked on the menu's options screen (0=Big Island, 1=Cove, 2=Archipelago) via PlayerPrefs \"GameModeIndex\" — see MainMenuController.StartGame. Index 2 (Archipelago) intentionally matches this class's own defaults above, so picking Archipelago changes nothing. Blob counts/radii below are rough estimates scaled to each preset's target land area, not measured — watch GenerateIsland's new area log (actual tiles vs. target fraction) and adjust until the achieved percentages actually track Big Island > Cove > Archipelago.")]
+    [SerializeField] private IslandSizePreset[] gameModeSizePresets = new IslandSizePreset[3]
+    {
+        new IslandSizePreset { width = 112, height = 112, targetLandFraction = 0.28f, blobCount = 3, blobMinRadius = 9f, blobMaxRadius = 16f },
+        new IslandSizePreset { width = 80, height = 80, targetLandFraction = 0.22f, blobCount = 2, blobMinRadius = 7f, blobMaxRadius = 12f },
+        new IslandSizePreset { width = 64, height = 64, targetLandFraction = 0.2f, blobCount = 2, blobMinRadius = 5f, blobMaxRadius = 9f },
+    };
+
     [Header("Placeholder Art")]
     [Tooltip("Leave unassigned to auto-generate a placeholder tile. Assign a real Tile asset to use imported art instead.")]
     [SerializeField] private TileBase waterTile;
@@ -138,6 +161,15 @@ public class IslandGenerator : MonoBehaviour
     /// <summary>The tilemap holding the shallow-water ring around every landmass, useful for anything that needs to tell shallow from deep water (e.g. keeping trash out of the shallows).</summary>
     public Tilemap ShallowWaterTilemap => shallowWaterTilemap;
 
+    /// <summary>Core map width in tiles, e.g. for anything computing a placement radius guaranteed to clear the whole map regardless of angle (see GarbagePatchSpawner).</summary>
+    public int Width => width;
+
+    /// <summary>Core map height in tiles. See Width.</summary>
+    public int Height => height;
+
+    /// <summary>How many tiles wide the shallow-water ring is, e.g. so a placement radius can clear it too. See Width.</summary>
+    public int ShallowWaterRadius => shallowWaterRadius;
+
     /// <summary>The currently spawned turtle nest, valid once IslandGenerated has fired.</summary>
     public Transform TurtleNestTransform => spawnedNest != null ? spawnedNest.transform : null;
 
@@ -157,6 +189,26 @@ public class IslandGenerator : MonoBehaviour
         if (sandTilemap != null && sandTilemap.HasTile(cell)) return false;
         if (shallowWaterTilemap != null && shallowWaterTilemap.HasTile(cell)) return false;
         return true;
+    }
+
+    private void Awake()
+    {
+        ApplyGameModePreset();
+    }
+
+    /// <summary>Runs once, before Start's first GenerateIsland — overrides the three size fields above from whichever game mode was picked on the menu (defaulting to Cove if the key is missing, e.g. GameScene opened directly in the Editor). Awake always finishes before any Start in the scene, so this ordering is safe regardless of component order. One-time application — later regenerations (island transitions) reuse the already-overridden fields.</summary>
+    private void ApplyGameModePreset()
+    {
+        if (gameModeSizePresets == null || gameModeSizePresets.Length == 0) return;
+
+        int index = Mathf.Clamp(PlayerPrefs.GetInt(GameModeIndexKey, 1), 0, gameModeSizePresets.Length - 1);
+        IslandSizePreset preset = gameModeSizePresets[index];
+        width = preset.width;
+        height = preset.height;
+        targetLandFraction = preset.targetLandFraction;
+        blobCount = preset.blobCount;
+        blobMinRadius = preset.blobMinRadius;
+        blobMaxRadius = preset.blobMaxRadius;
     }
 
     private void Start()
@@ -202,6 +254,9 @@ public class IslandGenerator : MonoBehaviour
         land = IslandNoiseMap.KeepIslandContainingCenter(land);
         bool[,] shallow = IslandNoiseMap.BuildShallowWaterMask(land, shallowWaterRadius, edgeWaterMargin);
 
+        int landTileCount = CountLandTiles(land);
+        Debug.Log($"IslandGenerator: island area = {landTileCount} tiles on a {width}x{height} map ({(float)landTileCount / (width * height):P1} of total) — target land fraction was {targetLandFraction:P0}.");
+
         PaintTilemaps(land, shallow);
         SpawnTurtleNest();
         IslandGenerated?.Invoke();
@@ -220,6 +275,23 @@ public class IslandGenerator : MonoBehaviour
         Vector3 center = sandTilemap.GetCellCenterWorld(Vector3Int.zero);
         Transform parent = turtleNestParent != null ? turtleNestParent : transform;
         spawnedNest = Instantiate(turtleNestPrefab, center, Quaternion.identity, parent);
+    }
+
+    /// <summary>Actual painted land-tile count from the final mask — distinct from Target Land Fraction, which is only a goal CalibrateLandThreshold aims for; the blob field (Blob Count/Min/Max Radius) can cap how much area is actually achievable regardless of what fraction is requested. Logged by GenerateIsland so island-size consistency across game modes can be checked directly rather than inferred from Width/Height/Target Land Fraction alone.</summary>
+    private static int CountLandTiles(bool[,] land)
+    {
+        int count = 0;
+        int landWidth = land.GetLength(0);
+        int landHeight = land.GetLength(1);
+        for (int y = 0; y < landHeight; y++)
+        {
+            for (int x = 0; x < landWidth; x++)
+            {
+                if (land[x, y]) count++;
+            }
+        }
+
+        return count;
     }
 
     private void ResolveSeed()

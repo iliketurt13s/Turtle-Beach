@@ -42,6 +42,7 @@ public class CellIndicator : MonoBehaviour
     private void Update()
     {
         bool shouldShow = !BuildModeController.IsActive
+            && !GarbagePatchCutsceneController.IsActive
             && turtleSelectionController != null
             && turtleSelectionController.HasSelection;
 

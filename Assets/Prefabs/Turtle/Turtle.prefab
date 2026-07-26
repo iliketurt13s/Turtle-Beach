@@ -985,6 +985,7 @@ GameObject:
   - component: {fileID: 1732962936513884549}
   - component: {fileID: 4308931286361866895}
   - component: {fileID: 2350652307729851294}
+  - component: {fileID: 5386789712536940561}
   m_Layer: 6
   m_Name: Turtle
   m_TagString: Untagged
@@ -1022,8 +1023,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TurtleAgent
   selectedTint: {r: 1, g: 0.85, b: 0.35, a: 1}
   arrivalDistance: 0.15
-  aggroDistance: 5
-  aggroSuppressionDuration: 3
+  aggroDistance: 4
+  aggroUnlockRadiusBase: 0.5
+  aggroUnlockRadiusPerDistance: 0.4
+  aggroUnlockRadiusMax: 5
+  aggroLineOfSightWidth: 1
   nestGuardDistance: 2
   nestGuardRetryInterval: 2
   carryCapacity: 5
@@ -1041,8 +1045,10 @@ MonoBehaviour:
   flipperFinSpriteLeft: {fileID: 2730074692205734321, guid: faa80bf76d321b443b4a692e3acfc920, type: 3}
   frontRightFinRenderer: {fileID: 4588087220294582399}
   flipperFinSpriteRight: {fileID: 7067732897449996879, guid: 264bd69e68971f7498e2d0698e4daefe, type: 3}
-  waypointArrivalDistance: 0.4
-  resourceLineOfSightShortcutRange: 2
+  waypointArrivalDistance: 1
+  pathRetargetCheckInterval: 0.4
+  pathRetargetDistance: 1
+  aggroChasePathShortenSteps: 3
   stuckCheckInterval: 4
   stuckMovementThreshold: 0.3
   stuckNudgeForce: 0.1
@@ -1050,6 +1056,11 @@ MonoBehaviour:
   pathGizmoColor: {r: 0, g: 1, b: 1, a: 1}
   pathGizmoCurrentWaypointColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
   pathGizmoDestinationColor: {r: 1, g: 0, b: 1, a: 1}
+  showAggroRangeGizmo: 1
+  aggroRangeGizmoColor: {r: 1, g: 0.3, b: 0.3, a: 1}
+  showAggroUnlockRadiusGizmo: 1
+  aggroUnlockRadiusGizmoColor: {r: 0.3, g: 1, b: 0.3, a: 1}
+  showAggroTargetGizmo: 1
   harvestRetryInterval: 2
   seaweedBuffEffects:
   - {fileID: 5991004099011295490}
@@ -1107,6 +1118,11 @@ MonoBehaviour:
   impulseForce: 0.2
   finParticle1: {fileID: 9152751447879976370}
   finParticle2: {fileID: 7486439463783980971}
+  trailParticle: {fileID: 8990271781245628509}
+  waterParticleColorMin: {r: 0.94117653, g: 0.9803922, b: 0.9921569, a: 1}
+  waterParticleColorMax: {r: 0.56078434, g: 0.78823537, b: 0.78823537, a: 1}
+  landParticleColorMin: {r: 0.84313726, g: 0.74509805, b: 0.58431375, a: 1}
+  landParticleColorMax: {r: 0.69803923, g: 0.6117647, b: 0.45490196, a: 1}
 --- !u!70 &4308931286361866895
 CapsuleCollider2D:
   m_ObjectHideFlags: 0
@@ -1158,6 +1174,63 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TurtleTargetSteering
   target: {fileID: 0}
   turnSpeed: 180
+--- !u!114 &5386789712536940561
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5487002307610338431}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0057544065082e34498df8f8196a028f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SquashAndStretch
+  targetOverride: {fileID: 6407003277750422361}
+  duration: 0.2
+  amount: 0.2
+  curve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.12
+      value: -1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.5
+      value: 0.6
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
 --- !u!1 &5980748874468474631
 GameObject:
   m_ObjectHideFlags: 0
@@ -1750,6 +1823,11 @@ PrefabInstance:
 --- !u!4 &7869513783713649735 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 8711388615863379653, guid: 6f8005834bdca1448a322b559bc12c84, type: 3}
+  m_PrefabInstance: {fileID: 1572654420857057922}
+  m_PrefabAsset: {fileID: 0}
+--- !u!198 &8990271781245628509 stripped
+ParticleSystem:
+  m_CorrespondingSourceObject: {fileID: 7570810804081836767, guid: 6f8005834bdca1448a322b559bc12c84, type: 3}
   m_PrefabInstance: {fileID: 1572654420857057922}
   m_PrefabAsset: {fileID: 0}
 --- !u!1001 &1822856222202471815

@@ -97,6 +97,7 @@ public class HoverTargetOutline : MonoBehaviour
     {
         bool shouldShow = !BuildModeController.IsActive
             && !UpgradeSelectionUI.IsActive
+            && !GarbagePatchCutsceneController.IsActive
             && turtleSelectionController != null
             && turtleSelectionController.HasSelection;
 

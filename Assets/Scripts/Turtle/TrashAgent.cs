@@ -70,6 +70,9 @@ public class TrashAgent : MonoBehaviour
         currentBurstInterval = RollBurstInterval();
     }
 
+    /// <summary>This instance's nest target, e.g. so TrashHealth.Die can pass it through to TrashDefinition.SpawnDeathDrops so dropped pieces get a path too.</summary>
+    public Transform NestTarget => nestTarget;
+
     /// <summary>Called by TrashSpawner right after instantiation with the nest to burst toward. Computes a path around nature ONCE, here — never recomputed afterward, only walked forward by index (see Update/CurrentAimPoint). Passes extraObstacleClearance so bigger trash's route keeps more distance from nature than a gap it can't actually fit through.</summary>
     public void Initialize(Transform target)
     {
@@ -145,8 +148,9 @@ public class TrashAgent : MonoBehaviour
         float rampT = momentumRampDuration > 0f ? Mathf.Clamp01(stormElapsedTime / momentumRampDuration) : 1f;
         float speedMultiplier = Mathf.Lerp(startingSpeedMultiplier, 1f, rampT);
 
+        float speedBonus = UpgradeManager.Instance != null ? UpgradeManager.Instance.TrashSpeedBonus : 0f;
         Vector2 direction = new Vector2(Mathf.Cos(angle * Mathf.Deg2Rad), Mathf.Sin(angle * Mathf.Deg2Rad));
-        rb.AddForce(direction * impulseForce * speedMultiplier, ForceMode2D.Impulse);
+        rb.AddForce(direction * impulseForce * speedMultiplier * (1f + speedBonus), ForceMode2D.Impulse);
     }
 
     /// <summary>The current burst's aim point: the in-progress path's current waypoint, or the nest directly once the path is exhausted/unavailable.</summary>

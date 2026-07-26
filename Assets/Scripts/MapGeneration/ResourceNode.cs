@@ -45,6 +45,9 @@ public class ResourceNode : MonoBehaviour
     private bool isDepleted;
     private float respawnTimer;
     private readonly HashSet<ResourceRespawnBooster> activeBoosters = new HashSet<ResourceRespawnBooster>();
+    private SquashAndStretch squashAndStretch;
+
+    private void Awake() => squashAndStretch = GetComponent<SquashAndStretch>();
 
     private void OnEnable() => allNodes.Add(this);
     private void OnDisable() => allNodes.Remove(this);
@@ -72,6 +75,8 @@ public class ResourceNode : MonoBehaviour
     public void RegisterHarvestHit()
     {
         if (isDepleted) return;
+
+        squashAndStretch?.Play();
 
         hitsTaken++;
         if (hitsTaken >= hitsToDeplete) Deplete();
