@@ -978,8 +978,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4294967295
-  m_fontColor: {r: 1, g: 1, b: 1, a: 1}
+    rgba: 4281554042
+  m_fontColor: {r: 0.4784314, g: 0.32941177, b: 0.20000002, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
@@ -1460,7 +1460,8 @@ Transform:
   m_LocalPosition: {x: 0, y: 0, z: -10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 817213385}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &519420033
@@ -1475,10 +1476,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9a129dae620cbd245b50a46db146de6f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraController
-  zoomSpeed: 60
+  zoomSpeed: 75
   minZoom: 2
   maxZoom: 30
-  dragSpeed: 2
+  dragSpeed: 1.75
   dragDistanceThreshold: 8
   islandGenerator: {fileID: 1635705031}
   webGLScrollScale: 0.1
@@ -2775,7 +2776,7 @@ PrefabInstance:
   serializedVersion: 2
   m_Modification:
     serializedVersion: 3
-    m_TransformParent: {fileID: 1635705033}
+    m_TransformParent: {fileID: 519420032}
     m_Modifications:
     - target: {fileID: 3085068987683984384, guid: f1982a5e7529a2c42bc0111de94df466, type: 3}
       propertyPath: m_Name
@@ -2791,7 +2792,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3957388634600438653, guid: f1982a5e7529a2c42bc0111de94df466, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0
+      value: 10
       objectReference: {fileID: 0}
     - target: {fileID: 3957388634600438653, guid: f1982a5e7529a2c42bc0111de94df466, type: 3}
       propertyPath: m_LocalRotation.w
@@ -2799,15 +2800,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3957388634600438653, guid: f1982a5e7529a2c42bc0111de94df466, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0
+      value: -0
       objectReference: {fileID: 0}
     - target: {fileID: 3957388634600438653, guid: f1982a5e7529a2c42bc0111de94df466, type: 3}
       propertyPath: m_LocalRotation.y
-      value: 0
+      value: -0
       objectReference: {fileID: 0}
     - target: {fileID: 3957388634600438653, guid: f1982a5e7529a2c42bc0111de94df466, type: 3}
       propertyPath: m_LocalRotation.z
-      value: 0
+      value: -0
       objectReference: {fileID: 0}
     - target: {fileID: 3957388634600438653, guid: f1982a5e7529a2c42bc0111de94df466, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
@@ -2902,8 +2903,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4294967295
-  m_fontColor: {r: 1, g: 1, b: 1, a: 1}
+    rgba: 4281554042
+  m_fontColor: {r: 0.4784314, g: 0.32941177, b: 0.20000002, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
@@ -4320,7 +4321,6 @@ Transform:
   - {fileID: 1140004740}
   - {fileID: 758128464}
   - {fileID: 1219581120}
-  - {fileID: 817213385}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1635705034
@@ -4815,8 +4815,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4294967295
-  m_fontColor: {r: 1, g: 1, b: 1, a: 1}
+    rgba: 4280631907
+  m_fontColor: {r: 0.38823533, g: 0.25882354, b: 0.14509805, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
