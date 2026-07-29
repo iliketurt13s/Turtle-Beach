@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -32,6 +33,15 @@ public class BuildModeController : MonoBehaviour
     private BuildableDefinition selectedBuildable;
     private int selectedIndex;
 
+    /// <summary>Array-order snapshot of every configured buildable (locked or not), so a UI (e.g. BuildSelectionUI) can look up the buildable before/after SelectedIndex without its own reference to the Inspector-authored array.</summary>
+    public IReadOnlyList<BuildableDefinition> Buildables => buildables;
+
+    /// <summary>Current index into Buildables — always an unlocked entry, see SetSelectedIndex.</summary>
+    public int SelectedIndex => selectedIndex;
+
+    /// <summary>Raised whenever anything BuildSelectionUI would need to redraw about the current selection changes: a fresh SetSelectedIndex (selectedIndex/selectedBuildable and the ghost sprite already up to date by the time this fires), a successful placement of the selected buildable bumping its own price back up, or a price rollback (BuildableDefinition.PriceRolledBack) landing on the currently selected buildable. Lets UI refresh exactly on change instead of polling every frame.</summary>
+    public event Action SelectedBuildableChanged;
+
     /// <summary>The Buildables entry with a TurtleBed component, found once in Awake — null if none is configured. Cached so UpdateTurtleBedAvailability doesn't need to scan the whole array every frame.</summary>
     private BuildableDefinition turtleBedBuildable;
     /// <summary>Last TurtleBed.AllBeds.Count seen by UpdateTurtleBedAvailability, so it only does work on the frame the count actually changes (placement or destruction) rather than every frame. -1 forces a check on the very first Update.</summary>
@@ -45,17 +55,6 @@ public class BuildModeController : MonoBehaviour
     [SerializeField] private Color insufficientFundsColor = new Color(1f, 0f, 0f);
     [Tooltip("How long the insufficient-funds flash stays up before the ghost goes back to normal position-based tinting.")]
     [SerializeField] private float insufficientFundsFlashDuration = 1f;
-
-    [Header("Cost Display")]
-    [Tooltip("No icons, by design — just two plain numbers below the ghost: Wood (brown) and Rock (dark grey).")]
-    [SerializeField] private float costTextVerticalOffset = 0.6f;
-    [SerializeField] private float costTextHorizontalSpacing = 0.3f;
-    [SerializeField] private float costTextFontSize = 2.5f;
-    [SerializeField] private bool costTextBold = false;
-    [Tooltip("Leave unassigned to use the default built-in font.")]
-    [SerializeField] private Font costTextFont;
-    [SerializeField] private Color woodCostColor = new Color(0.45f, 0.29f, 0.13f);
-    [SerializeField] private Color rockCostColor = new Color(0.3f, 0.3f, 0.3f);
 
     [Header("Range Indicator")]
     [Tooltip("Segments used to approximate the range-preview circle shown under the ghost for a buildable implementing IHasPlacementRange (Fertilizer, Pet Rock, Watchtower, Campfire). Higher = smoother circle.")]
@@ -76,8 +75,6 @@ public class BuildModeController : MonoBehaviour
     private Camera cam;
     private GameObject ghostObject;
     private SpriteRenderer ghostRenderer;
-    private TextMesh woodCostText;
-    private TextMesh rockCostText;
     private LineRenderer rangeCircleRenderer;
     private IHasPlacementRange selectedRangeSource;
     private Color validGhostColor;
@@ -130,10 +127,10 @@ public class BuildModeController : MonoBehaviour
         if (ghostObject != null) Destroy(ghostObject);
     }
 
-    /// <summary>Keeps the ghost's displayed cost numbers in sync if the buildable a placed instance just rolled back the price of (see BuildableDefinition.RegisterDestruction) happens to be the one currently selected.</summary>
+    /// <summary>Notifies UI (SelectedBuildableChanged) if the buildable a placed instance just rolled back the price of (see BuildableDefinition.RegisterDestruction) happens to be the one currently selected — its displayed cost is now stale.</summary>
     private void HandlePriceRolledBack(BuildableDefinition definition)
     {
-        if (definition == selectedBuildable) RefreshCostText();
+        if (definition == selectedBuildable) SelectedBuildableChanged?.Invoke();
     }
 
     /// <summary>Resets every configured buildable's price scaling back to its Inspector-authored base (see BuildableDefinition.ResetPriceScaling).</summary>
@@ -164,6 +161,7 @@ public class BuildModeController : MonoBehaviour
                 selectedIndex = candidate;
                 selectedBuildable = buildables[selectedIndex];
                 RefreshGhostSprite();
+                SelectedBuildableChanged?.Invoke();
                 return;
             }
         }
@@ -265,9 +263,6 @@ public class BuildModeController : MonoBehaviour
         ghostObject = new GameObject("BuildGhost");
         ghostRenderer = ghostObject.AddComponent<SpriteRenderer>();
 
-        woodCostText = CreateCostText("WoodCostText", new Vector3(-costTextHorizontalSpacing, -costTextVerticalOffset, 0f), woodCostColor);
-        rockCostText = CreateCostText("RockCostText", new Vector3(costTextHorizontalSpacing, -costTextVerticalOffset, 0f), rockCostColor);
-
         BuildRangeCircle();
     }
 
@@ -289,36 +284,6 @@ public class BuildModeController : MonoBehaviour
         circleObject.SetActive(false);
     }
 
-    private TextMesh CreateCostText(string name, Vector3 localPosition, Color color)
-    {
-        GameObject textObject = new GameObject(name);
-        textObject.transform.SetParent(ghostObject.transform, false);
-        textObject.transform.localPosition = localPosition;
-
-        TextMesh text = textObject.AddComponent<TextMesh>();
-        text.anchor = TextAnchor.MiddleCenter;
-        text.alignment = TextAlignment.Center;
-        text.characterSize = costTextFontSize * 0.1f;
-        text.fontSize = 96;
-        text.fontStyle = costTextBold ? FontStyle.Bold : FontStyle.Normal;
-
-        // TextMesh doesn't repoint its renderer's material when you assign a
-        // custom Font via script — without this the glyphs are there but
-        // invisible, still rendering with the default font's material/texture.
-        // Also, TextMesh's own implicit default font isn't a dynamic font, so
-        // the fontSize/fontStyle overrides above log "only supported for
-        // dynamic fonts" unless a dynamic font (custom or this built-in
-        // fallback) is explicitly assigned.
-        Font font = costTextFont != null ? costTextFont : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        text.font = font;
-        textObject.GetComponent<MeshRenderer>().material = font.material;
-
-        text.color = color;
-        text.text = "0";
-
-        return text;
-    }
-
     private void RefreshGhostSprite()
     {
         if (ghostRenderer == null) return;
@@ -333,7 +298,6 @@ public class BuildModeController : MonoBehaviour
         if (sourceRenderer == null)
         {
             ghostRenderer.sprite = null;
-            RefreshCostText();
             return;
         }
 
@@ -346,18 +310,14 @@ public class BuildModeController : MonoBehaviour
         validGhostColor = color;
         ghostRenderer.color = validGhostColor;
 
-        // Keep the cost numbers (and range circle, if any) drawing above the
-        // ghost sprite regardless of which sorting layer/order the selected
-        // buildable's own sprite uses.
-        SetCostTextSorting(woodCostText, sourceRenderer.sortingLayerID, sourceRenderer.sortingOrder + 1);
-        SetCostTextSorting(rockCostText, sourceRenderer.sortingLayerID, sourceRenderer.sortingOrder + 1);
+        // Keep the range circle (if any) drawing above the ghost sprite
+        // regardless of which sorting layer/order the selected buildable's
+        // own sprite uses.
         if (rangeCircleRenderer != null)
         {
             rangeCircleRenderer.sortingLayerID = sourceRenderer.sortingLayerID;
             rangeCircleRenderer.sortingOrder = sourceRenderer.sortingOrder + 1;
         }
-
-        RefreshCostText();
     }
 
     /// <summary>Redraws the range-preview circle from the selected buildable's live IHasPlacementRange.PlacementRange every frame the ghost is up, so an upgrade-card range bonus picked mid-run is reflected immediately rather than only after reselecting the buildable. No-op (and hidden) for any buildable that doesn't implement the interface.</summary>
@@ -379,36 +339,6 @@ public class BuildModeController : MonoBehaviour
             float angle = i * Mathf.PI * 2f / rangeCircleSegments;
             rangeCircleRenderer.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f));
         }
-    }
-
-    private static void SetCostTextSorting(TextMesh text, int sortingLayerID, int sortingOrder)
-    {
-        if (text == null) return;
-
-        Renderer renderer = text.GetComponent<Renderer>();
-        if (renderer == null) return;
-
-        renderer.sortingLayerID = sortingLayerID;
-        renderer.sortingOrder = sortingOrder;
-    }
-
-    /// <summary>Reads Wood/Rock out of the selected buildable's cost (0 if it doesn't cost that type, or nothing is selected) and updates the two ghost cost numbers.</summary>
-    private void RefreshCostText()
-    {
-        int woodCost = 0;
-        int rockCost = 0;
-
-        if (selectedBuildable != null)
-        {
-            foreach (ResourceManager.ResourceCost cost in selectedBuildable.Cost)
-            {
-                if (cost.type == ResourceManager.ResourceType.Wood) woodCost = cost.amount;
-                else if (cost.type == ResourceManager.ResourceType.Rock) rockCost = cost.amount;
-            }
-        }
-
-        if (woodCostText != null) woodCostText.text = woodCost.ToString();
-        if (rockCostText != null) rockCostText.text = rockCost.ToString();
     }
 
     private void SetGhostVisible(bool visible)
@@ -476,7 +406,7 @@ public class BuildModeController : MonoBehaviour
         }
 
         selectedBuildable.RegisterPlacement();
-        RefreshCostText();
+        SelectedBuildableChanged?.Invoke();
 
         GameObject instance = Instantiate(selectedBuildable.gameObject, cellCenter, Quaternion.identity);
         instance.GetComponent<SquashAndStretch>()?.Play();

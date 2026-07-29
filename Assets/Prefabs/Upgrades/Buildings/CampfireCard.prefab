@@ -47,6 +47,6 @@ MonoBehaviour:
   displayName: Campfire
   icon: {fileID: 1454554568686336964, guid: 45f2ba523392f204f833d3f893eed542, type: 3}
   description: Place this around your nest to buff the speed of turtles in range
-    by +50%. *only works during the day
+    by +30%. *only works during the day
   stackable: 0
   buildableToUnlock: {fileID: 7999720511810760301, guid: db07619ccc8d02540a12587573f3a458, type: 3}

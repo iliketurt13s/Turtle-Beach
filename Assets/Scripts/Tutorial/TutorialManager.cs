@@ -8,8 +8,9 @@ using UnityEngine;
 /// flag set by MainMenuController and, if set, immediately clears it (so it
 /// covers exactly one playthrough) and runs a fixed scripted sequence: select a
 /// turtle, direct it to a rock and collect some, direct it to a tree and start
-/// collecting wood, teach camera pan/zoom while that wood collection finishes,
-/// then place a Turtle Bed — each of those steps gated by IsActive freezing
+/// collecting wood, teach camera pan/zoom and then the speed controls while
+/// that wood collection finishes, then place a Turtle Bed — each of those
+/// steps gated by IsActive freezing
 /// DayStormCycle's day clock (see DayStormCycle.Update) so no storm can interrupt
 /// it. IsActive drops right after that, letting the day clock run for real, and
 /// the sequence then waits for the first actual storm before teaching base
@@ -44,10 +45,11 @@ public class TutorialManager : MonoBehaviour
     [SerializeField, TextArea] private string directToRockMessage = "Now direct your turtle to a rock to collect some stone.";
     [SerializeField, TextArea] private string directToTreeMessage = "Great! Now direct your turtle to a tree to collect some wood.";
     [SerializeField, TextArea] private string cameraControlsMessage = "While it collects, try panning the camera (click and drag) and zooming (scroll wheel) to look around the island.";
+    [SerializeField, TextArea] private string speedControlsMessage = "You can also speed up or pause time using the controls in the bottom-left corner.";
     [SerializeField, TextArea] private string continueHarvestingMessage = "Continue harvesting resources.";
     [SerializeField, TextArea] private string placeBedMessage = "Hold Shift to enter build mode, then place a Turtle Bed to hatch a new turtle.";
     [SerializeField, TextArea] private string goodLuckMessage = "That's everything — good luck out there!";
-    [SerializeField, TextArea] private string sendTurtlesToPlasticMessage = "Night has fallen! Send your turtles toward the incoming plastic to protect the island.";
+    [SerializeField, TextArea] private string sendTurtlesToPlasticMessage = "The storm has arrived! Send your turtles toward the incoming plastic to protect the island.";
     [SerializeField, TextArea] private string onYourOwnMessage = "You're on your own now. Good luck.";
 
     [Header("Step Tuning")]
@@ -63,6 +65,8 @@ public class TutorialManager : MonoBehaviour
     [SerializeField] private float cameraZoomDetectionAmount = 0.5f;
     [Tooltip("The camera-controls step also completes on its own after this long, whether or not the player actually pans/zooms — wood keeps being collected the whole time this step is up, so this is tuned to land comfortably before Wood To Collect would be reached on its own, and well before the following continueHarvestingMessage step would otherwise show.")]
     [SerializeField] private float cameraControlsTimeout = 12f;
+    [Tooltip("The speed-controls step completes on its own after this long, whether or not the player actually tries pausing/speeding up — same rationale as Camera Controls Timeout, just shorter since there's only one thing to try.")]
+    [SerializeField] private float speedControlsTimeout = 6f;
     [Tooltip("How long sendTurtlesToPlasticMessage stays up before onYourOwnMessage replaces it — a fixed delay rather than waiting for a turtle to actually engage, so the sign-off is guaranteed to show while the storm (night) is still ongoing instead of risking never firing at all if the player is slow to react.")]
     [SerializeField] private float sendTurtlesFollowUpDelay = 15f;
 
@@ -120,6 +124,7 @@ public class TutorialManager : MonoBehaviour
         yield return new WaitUntil(() => AnyTurtleTargeting(ResourceManager.ResourceType.Wood));
 
         yield return RunCameraControlsStep();
+        yield return RunSpeedControlsStep();
 
         ShowMessage(continueHarvestingMessage);
         yield return new WaitUntil(() => ResourceManager.Instance.GetCount(ResourceManager.ResourceType.Wood) >= woodToCollect);
@@ -168,6 +173,22 @@ public class TutorialManager : MonoBehaviour
             if (!hasPanned && Vector3.Distance(cam.transform.position, startPosition) >= cameraPanDetectionDistance) hasPanned = true;
             if (!hasZoomed && Mathf.Abs(cam.orthographicSize - startZoom) >= cameraZoomDetectionAmount) hasZoomed = true;
             elapsed += Time.deltaTime;
+            yield return null;
+        }
+    }
+
+    /// <summary>Follows straight on from the camera-controls step to introduce the pause/normal/double-speed buttons in the bottom-left corner (see TimeControlUI) — waits for Time.timeScale to move away from 1 (the player trying one of the buttons), or completes on its own after Speed Controls Timeout regardless, same rationale as RunCameraControlsStep. Uses unscaled time for the timeout so a player who pauses and doesn't unpause still isn't stuck here forever.</summary>
+    private IEnumerator RunSpeedControlsStep()
+    {
+        ShowMessage(speedControlsMessage);
+
+        bool hasChangedSpeed = false;
+        float elapsed = 0f;
+
+        while (!hasChangedSpeed && elapsed < speedControlsTimeout)
+        {
+            if (!Mathf.Approximately(Time.timeScale, 1f)) hasChangedSpeed = true;
+            elapsed += Time.unscaledDeltaTime;
             yield return null;
         }
     }

@@ -31,6 +31,8 @@ public class DayStormCycle : MonoBehaviour
     [SerializeField] private UpgradeSelectionUI upgradeSelectionUI;
     [Tooltip("Runs right after the helpful upgrade card above is picked: pans to the garbage patch, knocks off a health segment, and (once depleted) runs the hazard pick + island transition. If left unassigned, the next day begins immediately with no cutscene.")]
     [SerializeField] private GarbagePatchCutsceneController garbagePatchCutsceneController;
+    [Tooltip("Screen-covering particle effect (e.g. rain/wind) that plays for the duration of the storm. Played the instant the storm starts (alongside StormStarted) and stopped the instant it ends (alongside StormEnded) — just Play()/Stop(), no per-frame tuning. Left unassigned, no storm VFX plays.")]
+    [SerializeField] private ParticleSystem stormOverlayEffect;
 
     [Header("Timing")]
     [SerializeField] private float dayDuration = 30f;
@@ -140,6 +142,7 @@ public class DayStormCycle : MonoBehaviour
             IsStorming = true;
             isFirstDay = false;
             StormStarted?.Invoke();
+            stormOverlayEffect?.Play();
             upgradeSelectionUI?.BeginStormFadeIn();
         }
         else if (IsStorming && !trashSpawner.AnyTrashAlive())
@@ -148,6 +151,7 @@ public class DayStormCycle : MonoBehaviour
             trashSpawner.BeginFadeOutAndClear(fadeOutDuration);
             BuildingHealth.HealAll();
             StormEnded?.Invoke();
+            stormOverlayEffect?.Stop();
             CurrentRound++;
 
             if (upgradeSelectionUI != null)

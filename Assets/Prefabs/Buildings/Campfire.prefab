@@ -334,6 +334,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BuildingHealth
   maxHealth: 15
   damagePerHit: 1
+  hitCooldown: 1
   healthBar: {fileID: 6906165137870169412}
   isInteractable: 0
 --- !u!114 &7999720511810760301
@@ -351,9 +352,9 @@ MonoBehaviour:
   displayName: Campfire
   cost:
   - type: 0
-    amount: 10
+    amount: 15
   - type: 1
-    amount: 10
+    amount: 15
   priceIncreasePercentPerPlacement: 0
 --- !u!114 &7835382793242722789
 MonoBehaviour:
@@ -368,7 +369,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Campfire
   flameVisual: {fileID: 7612680191403008042}
-  speedBonus: 0.5
+  speedBonus: 0.3
   range: 2
   rangeParticles: {fileID: 1627062827493496259}
 --- !u!114 &8046383153106275685

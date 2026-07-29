@@ -25,6 +25,9 @@ public class BuildableDefinition : MonoBehaviour
 
     public string DisplayName => displayName;
 
+    /// <summary>This buildable's representative sprite, e.g. for BuildSelectionUI's icons — same GetComponentInChildren&lt;SpriteRenderer&gt; lookup BuildModeController.RefreshGhostSprite already uses for the ghost itself. Null if this buildable has no SpriteRenderer anywhere in its hierarchy.</summary>
+    public Sprite Icon => GetComponentInChildren<SpriteRenderer>()?.sprite;
+
     /// <summary>The Inspector-authored base cost scaled up by Price Increase Percent Per Placement (compounded once per previous placement, see RegisterPlacement) and by Cost Multiplier (see MultiplyCost). Recomputed on every access rather than cached, since both change over the session.</summary>
     public IReadOnlyList<ResourceManager.ResourceCost> Cost => ScaledCost();
 

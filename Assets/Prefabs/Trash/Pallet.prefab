@@ -18,6 +18,7 @@ GameObject:
   - component: {fileID: 3651242936267090533}
   - component: {fileID: 5849298380084301478}
   - component: {fileID: -436484135923358765}
+  - component: {fileID: 9019201499989611894}
   m_Layer: 0
   m_Name: Pallet
   m_TagString: trash
@@ -308,3 +309,15 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+--- !u!114 &9019201499989611894
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 925840000698653082}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d2fcf6361f94d4e4da06b49bc616117f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TrashHoverTint

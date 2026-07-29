@@ -92,6 +92,8 @@ public class TurtleAgent : MonoBehaviour
     [Header("Movement")]
     [Tooltip("Distance (world units) at which a ground-point order is considered arrived.")]
     [SerializeField] private float arrivalDistance = 0.15f;
+    [Tooltip("Degrees per second this turtle turns clockwise (see TurtleTargetSteering.NudgeRight) for as long as its shell is physically touching another turtle's shell — front, back, or side, whatever angle the two happen to meet at. Applied continuously (OnCollisionEnter2D/Stay2D, not the head trigger — the shell is the collider actually doing the physical pushing that reads as 'stuck', the head is a much smaller sensor 0.4 units out front that a broadside or rear bump never reaches at all) for as long as contact lasts, so every turtle nudging the same way turns a stuck cluster into a curve-and-slide-past rather than a shove that only self-resolves once something else (like the target itself moving) breaks the tie.")]
+    [SerializeField] private float turtleCollisionTurnRate = 90f;
 
     [Header("Aggro")]
     [Tooltip("Distance (world units) within which this turtle will notice and go attack trash.")]
@@ -734,6 +736,25 @@ public class TurtleAgent : MonoBehaviour
 
         Watchtower watchtower = other.GetComponentInParent<Watchtower>();
         if (watchtower != null) watchtower.TryStationTurtle(this);
+    }
+
+    // Turtle-vs-turtle avoidance deliberately doesn't go through HandleHeadHit
+    // above (the head trigger) at all — the head is a small sensor 0.4 units
+    // out in front, so a broadside or rear bump between two turtles' shells
+    // (the actual solid, non-trigger CapsuleCollider2D on this same
+    // GameObject, and what's really doing the physical push that reads as
+    // "stuck") never reaches it. OnCollisionEnter2D/Stay2D react to that shell
+    // contact directly instead, whatever angle it happens at.
+    private void OnCollisionEnter2D(Collision2D collision) => HandleTurtleCollision(collision);
+    private void OnCollisionStay2D(Collision2D collision) => HandleTurtleCollision(collision);
+
+    /// <summary>Turns this turtle a little clockwise for every physics step its shell spends touching another turtle's shell (see turtleCollisionTurnRate's own tooltip) — since every turtle applies the exact same rightward bias, two stuck against each other curve apart instead of endlessly shoving, regardless of which side of each other they hit.</summary>
+    private void HandleTurtleCollision(Collision2D collision)
+    {
+        if (collision.collider.GetComponentInParent<TurtleAgent>() != null)
+        {
+            steering.NudgeRight(turtleCollisionTurnRate * Time.fixedDeltaTime);
+        }
     }
 
     /// <summary>Shared by HandleHeadHit's on-contact depletion branch and CheckResourceTaskStillHarvestable's proactive per-frame one: either deliver what's already carried (no reason to make the trip back later) or go find another instance of the same resource type right away.</summary>

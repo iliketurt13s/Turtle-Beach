@@ -47,6 +47,9 @@ public class TurtleTargetSteering : MonoBehaviour
     /// <summary>Reassign what the turtle steers toward at runtime.</summary>
     public void SetTarget(Transform newTarget) => target = newTarget;
 
+    /// <summary>Instantly rotates clockwise ("to the right," matching transform.right = forward at rotation 0) by degrees, on top of whatever this turtle's current heading already is — used on a head-on collision with another turtle so a face-off resolves itself instead of both turtles endlessly pushing straight into each other. Doesn't touch target: FixedUpdate's own turnSpeed-limited MoveTowardsAngle keeps homing in on it as normal starting from this new angle, so the turn reads as a brief swerve that self-corrects rather than a lasting detour.</summary>
+    public void NudgeRight(float degrees) => rb.MoveRotation(rb.rotation - degrees);
+
     /// <summary>Called by TurtleLocomotion with the combined product of every currently-active speed buff, so turn rate scales along with stroke rate. Overwrites, not compounds — TurtleLocomotion always passes the already-combined total.</summary>
     public void SetTurnSpeedMultiplier(float multiplier) => turnSpeedMultiplier = multiplier;
 }

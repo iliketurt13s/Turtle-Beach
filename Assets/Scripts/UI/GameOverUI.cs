@@ -35,6 +35,8 @@ public class GameOverUI : MonoBehaviour
 
     [Tooltip("Root object for the game-over panel — reused as the pause menu (see class doc comment), hidden until either is shown.")]
     [SerializeField] private GameObject panel;
+    [Tooltip("Panel's own UISlidePanel — Pause()/Show() call PlayIn explicitly (on top of whatever its own Play In On Enable does, redundant but harmless — covers the panel already being active from a rapid pause/resume) and Resume() calls PlayOut, only deactivating panel once it's actually back off-screen. Leave unassigned to fall back to instant SetActive on all three.")]
+    [SerializeField] private UISlidePanel panelSlide;
     [Tooltip("Shows the real final score once the run ends, or Paused Message below while merely paused.")]
     [SerializeField] private TMP_Text finalScoreText;
     [Tooltip("Shows the all-time high score once the run ends. Hidden entirely while merely paused.")]
@@ -91,6 +93,7 @@ public class GameOverUI : MonoBehaviour
         if (highScoreText != null) highScoreText.gameObject.SetActive(false);
 
         if (panel != null) panel.SetActive(true);
+        if (panelSlide != null) panelSlide.PlayIn();
     }
 
     private void Resume()
@@ -98,7 +101,14 @@ public class GameOverUI : MonoBehaviour
         IsPaused = false;
         Time.timeScale = timeScaleBeforePause;
 
-        if (panel != null) panel.SetActive(false);
+        if (panelSlide != null)
+        {
+            panelSlide.PlayOut(() => { if (panel != null) panel.SetActive(false); });
+        }
+        else if (panel != null)
+        {
+            panel.SetActive(false);
+        }
     }
 
     private void Show()
@@ -122,6 +132,7 @@ public class GameOverUI : MonoBehaviour
         }
 
         if (panel != null) panel.SetActive(true);
+        if (panelSlide != null) panelSlide.PlayIn();
     }
 
     /// <summary>Wire this up to the Restart button's OnClick() in the Inspector. Reloads the current scene fresh — every gameplay system (turtles, trash, resources, score) is scene-instantiated, so this alone resets a full run.</summary>
