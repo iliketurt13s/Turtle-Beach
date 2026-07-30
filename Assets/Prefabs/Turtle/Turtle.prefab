@@ -1028,6 +1028,8 @@ MonoBehaviour:
   aggroUnlockRadiusPerDistance: 0.4
   aggroUnlockRadiusMax: 5
   aggroLineOfSightWidth: 1
+  separationRadius: 1
+  separationForce: 0.75
   nestGuardDistance: 2
   nestGuardRetryInterval: 2
   carryCapacity: 5

@@ -92,8 +92,6 @@ public class TurtleAgent : MonoBehaviour
     [Header("Movement")]
     [Tooltip("Distance (world units) at which a ground-point order is considered arrived.")]
     [SerializeField] private float arrivalDistance = 0.15f;
-    [Tooltip("Degrees per second this turtle turns clockwise (see TurtleTargetSteering.NudgeRight) for as long as its shell is physically touching another turtle's shell — front, back, or side, whatever angle the two happen to meet at. Applied continuously (OnCollisionEnter2D/Stay2D, not the head trigger — the shell is the collider actually doing the physical pushing that reads as 'stuck', the head is a much smaller sensor 0.4 units out front that a broadside or rear bump never reaches at all) for as long as contact lasts, so every turtle nudging the same way turns a stuck cluster into a curve-and-slide-past rather than a shove that only self-resolves once something else (like the target itself moving) breaks the tie.")]
-    [SerializeField] private float turtleCollisionTurnRate = 90f;
 
     [Header("Aggro")]
     [Tooltip("Distance (world units) within which this turtle will notice and go attack trash.")]
@@ -106,6 +104,12 @@ public class TurtleAgent : MonoBehaviour
     [SerializeField] private float aggroUnlockRadiusMax = 4f;
     [Tooltip("Extra obstacle clearance (grid cells) applied to the aggro line-of-sight shortcut (see UpdateAggroSteering), matching how wide this turtle physically is. Without this, the LOS check (a zero-width line) could approve a straight shot through a gap between two nature obstacles too narrow for the turtle's actual body to fit through, the same concern TrashAgent's Extra Obstacle Clearance addresses for pathfinding.")]
     [SerializeField, Range(0, 3)] private int aggroLineOfSightWidth = 1;
+
+    [Header("Separation")]
+    [Tooltip("Turtles within this distance of each other get a slight push apart every physics step, so they don't fully overlap now that they no longer physically collide (see TurtleBuildingCollisionSetup).")]
+    [SerializeField] private float separationRadius = 1f;
+    [Tooltip("Strength of the separation push at zero distance, fading to 0 at Separation Radius. Tune to taste — too high and turtles visibly jitter apart, too low and they keep overlapping.")]
+    [SerializeField] private float separationForce = 2f;
 
     [Header("Nest Defense")]
     [Tooltip("While storming, an idle turtle (no order, not aggroed) heads toward the nest to help guard it, stopping once within this distance rather than stacking on top of it.")]
@@ -375,6 +379,60 @@ public class TurtleAgent : MonoBehaviour
         if (idleWanderMarker != null) Destroy(idleWanderMarker.gameObject);
         if (pathWaypointMarker != null) Destroy(pathWaypointMarker.gameObject);
         if (shoreWaitMarker != null) Destroy(shoreWaitMarker.gameObject);
+    }
+
+    private void FixedUpdate()
+    {
+        UpdateSeparation();
+    }
+
+    /// <summary>
+    /// Turtles no longer physically collide with each other (see
+    /// TurtleBuildingCollisionSetup), so without this they can fully overlap
+    /// when several converge on the same resource/building. Pushes away from
+    /// every other turtle within separationRadius, but only along the axis
+    /// perpendicular to this turtle's own forward heading — never the
+    /// forward/backward component — so a turtle following close behind
+    /// another gets nudged to the side rather than slowed, stopped, or shoved
+    /// backward. A no-op while parked/kinematic (AddForce does nothing to a
+    /// kinematic Rigidbody2D).
+    /// </summary>
+    private void UpdateSeparation()
+    {
+        if (allTurtles.Count <= 1) return;
+
+        Vector2 forward = transform.right;
+        Vector2 lateral = new Vector2(-forward.y, forward.x);
+        Vector2 push = Vector2.zero;
+        int selfIndex = allTurtles.IndexOf(this);
+
+        for (int i = 0; i < allTurtles.Count; i++)
+        {
+            TurtleAgent other = allTurtles[i];
+            if (other == this || other == null) continue;
+
+            Vector2 offset = (Vector2)transform.position - (Vector2)other.transform.position;
+            float distance = offset.magnitude;
+            if (distance >= separationRadius || distance <= 0.0001f) continue;
+
+            float lateralAmount = Vector2.Dot(offset, lateral);
+            // Directly ahead/behind (no measurable sideways offset) — break
+            // the tie deterministically via each turtle's stable position in
+            // allTurtles, so two turtles dead in line still separate
+            // sideways instead of never moving.
+            if (Mathf.Abs(lateralAmount) < 0.01f)
+            {
+                lateralAmount = selfIndex < i ? 0.01f : -0.01f;
+            }
+
+            float strength = 1f - (distance / separationRadius);
+            push += lateral * Mathf.Sign(lateralAmount) * strength;
+        }
+
+        if (push.sqrMagnitude > 0.0001f)
+        {
+            rb.AddForce(push * separationForce, ForceMode2D.Force);
+        }
     }
 
     private void Update()
@@ -736,25 +794,6 @@ public class TurtleAgent : MonoBehaviour
 
         Watchtower watchtower = other.GetComponentInParent<Watchtower>();
         if (watchtower != null) watchtower.TryStationTurtle(this);
-    }
-
-    // Turtle-vs-turtle avoidance deliberately doesn't go through HandleHeadHit
-    // above (the head trigger) at all — the head is a small sensor 0.4 units
-    // out in front, so a broadside or rear bump between two turtles' shells
-    // (the actual solid, non-trigger CapsuleCollider2D on this same
-    // GameObject, and what's really doing the physical push that reads as
-    // "stuck") never reaches it. OnCollisionEnter2D/Stay2D react to that shell
-    // contact directly instead, whatever angle it happens at.
-    private void OnCollisionEnter2D(Collision2D collision) => HandleTurtleCollision(collision);
-    private void OnCollisionStay2D(Collision2D collision) => HandleTurtleCollision(collision);
-
-    /// <summary>Turns this turtle a little clockwise for every physics step its shell spends touching another turtle's shell (see turtleCollisionTurnRate's own tooltip) — since every turtle applies the exact same rightward bias, two stuck against each other curve apart instead of endlessly shoving, regardless of which side of each other they hit.</summary>
-    private void HandleTurtleCollision(Collision2D collision)
-    {
-        if (collision.collider.GetComponentInParent<TurtleAgent>() != null)
-        {
-            steering.NudgeRight(turtleCollisionTurnRate * Time.fixedDeltaTime);
-        }
     }
 
     /// <summary>Shared by HandleHeadHit's on-contact depletion branch and CheckResourceTaskStillHarvestable's proactive per-frame one: either deliver what's already carried (no reason to make the trip back later) or go find another instance of the same resource type right away.</summary>
@@ -1177,10 +1216,11 @@ public class TurtleAgent : MonoBehaviour
         SetFinsPlaying(false);
     }
 
-    /// <summary>Only called while not already aggroed (see Update()). A live geometric check, not a timer — re-evaluated fresh every frame against this turtle's current distance to moveTargetMarker, so it's never an estimate that can expire early (a dense clump's physics jostling slowing the trip down doesn't matter) or linger after the turtle's already well clear. groundMoveReachable guards against the one edge case a pure distance check can't self-correct: a MoveToPoint destination that turned out unreachable, where this turtle isn't making any progress toward closing that distance at all — without it, such a turtle would be stuck refusing to defend itself forever instead of just sitting there uselessly frozen.</summary>
+    /// <summary>Only called while not already aggroed (see Update()). A live geometric check, not a timer — re-evaluated fresh every frame against this turtle's current distance to moveTargetMarker, so it's never an estimate that can expire early (a dense clump's physics jostling slowing the trip down doesn't matter) or linger after the turtle's already well clear. groundMoveReachable guards against the one edge case a pure distance check can't self-correct: a MoveToPoint destination that turned out unreachable, where this turtle isn't making any progress toward closing that distance at all — without it, such a turtle would be stuck refusing to defend itself forever instead of just sitting there uselessly frozen. isCollidingWithBuilding (true iff currentTaskTarget is an interactable building — a Watchtower or Rune, see UpdateBuildingCollision) blocks aggro entirely rather than just delaying it like the ground-move check below: a turtle deliberately sent to station at a Watchtower or earn a Rune's buff shouldn't get pulled off that order by nearby trash, even mid-walk before it's arrived — this deliberately generalizes past "Watchtower" specifically, since a Rune visit has the same repeated-bump mechanic and would be equally disrupted.</summary>
     private void TryAcquireAggroTarget()
     {
         if (!DayStormCycle.IsStorming) return;
+        if (isCollidingWithBuilding) return;
 
         if (isGroundMove && groundMoveReachable
             && Vector2.Distance(transform.position, moveTargetMarker.position) > aggroUnlockRadius)

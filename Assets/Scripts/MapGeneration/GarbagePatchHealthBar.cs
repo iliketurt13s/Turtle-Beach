@@ -1,37 +1,79 @@
+using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// Discrete "pip" health bar for GarbagePatch — a fixed, pre-authored number
-/// of pip sprites regardless of Max Segments, unlike BuildingHealthBar's
-/// continuous scaled fill. Purely visual: just toggles pre-authored child
-/// sprites on/off, owns no health data itself. Shows current/max as a ratio
-/// of the pip count rather than one pip per point, so it stays meaningful
-/// even when Max Segments (see GarbagePatch's game-mode presets, e.g. Cove's
-/// 10 or Big Island's effectively-infinite cap) exceeds how many pips exist —
-/// losing 2 of 10 with 5 pips authored drops exactly 1 pip, not nothing.
+/// Continuous world-space health bar for GarbagePatch — a single fill sprite
+/// (pivot at its left edge, so scaling local X shrinks it from the right,
+/// same convention as BuildingHealthBar.SetHealth) rather than the old
+/// discrete pip set. A continuous current/max ratio is exact regardless of
+/// Max Segments (5/10/999999 depending on game mode — see GarbagePatch's
+/// game-mode presets), so a hit is always visually perceptible; the old pip
+/// version could round a hit down to "no visible change" against a large max.
+/// Smoothly animates to the new ratio (unscaled time, so it still plays
+/// through a paused frame) rather than snapping — except the very first call
+/// (initial spawn), which snaps instantly so the patch doesn't visibly
+/// fill up from empty the moment it appears.
 /// </summary>
 public class GarbagePatchHealthBar : MonoBehaviour
 {
-    [Tooltip("Pip sprites, in order. A lost segment is hidden entirely rather than recolored/shrunk.")]
-    [SerializeField] private SpriteRenderer[] segments;
+    [Tooltip("Fill sprite, pivot at its left edge, so scaling local X shrinks it from the right.")]
+    [SerializeField] private SpriteRenderer fillRenderer;
+    [SerializeField] private float animationDuration = 0.4f;
+    [SerializeField] private AnimationCurve animationCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+
+    private bool initialized;
+    private float currentRatio;
+    private float fullScaleX;
+    private Coroutine activeRoutine;
+
+    /// <summary>True while the fill is still animating toward its latest target ratio — GarbagePatch waits for this to clear before destroying itself on depletion, so the bar visually finishes draining to zero rather than vanishing mid-shrink.</summary>
+    public bool IsAnimating => activeRoutine != null;
 
     public void SetSegments(int current, int max)
     {
-        if (segments == null) return;
+        if (fillRenderer == null) return;
 
-        int visibleCount = max > 0
-            ? Mathf.Clamp(Mathf.RoundToInt((float)current / max * segments.Length), 0, segments.Length)
-            : 0;
+        float targetRatio = max > 0 ? Mathf.Clamp01((float)current / max) : 0f;
 
-        // A low ratio against a high Max Segments (e.g. Big Island's
-        // near-infinite cap, or Cove's) can round down to 0 visible pips even
-        // with real health still remaining — never show fully depleted while
-        // the patch is actually still alive.
-        if (current > 0) visibleCount = Mathf.Max(visibleCount, 1);
-
-        for (int i = 0; i < segments.Length; i++)
+        if (!initialized)
         {
-            if (segments[i] != null) segments[i].gameObject.SetActive(i < visibleCount);
+            initialized = true;
+            // Whatever local X scale the fill was authored at in the prefab
+            // IS full width (e.g. GarbagePatch's Fill is scaled to 4.935 to
+            // span its frame) — captured once here rather than assumed to be
+            // 1, so full health renders at the artist's actual full-width
+            // appearance instead of getting clobbered down to a bare ratio.
+            fullScaleX = fillRenderer.transform.localScale.x;
+            currentRatio = targetRatio;
+            ApplyRatio(currentRatio);
+            return;
         }
+
+        if (activeRoutine != null) StopCoroutine(activeRoutine);
+        activeRoutine = StartCoroutine(AnimateFill(currentRatio, targetRatio));
+    }
+
+    private IEnumerator AnimateFill(float from, float to)
+    {
+        float elapsed = 0f;
+        while (elapsed < animationDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = animationCurve.Evaluate(Mathf.Clamp01(elapsed / animationDuration));
+            currentRatio = Mathf.LerpUnclamped(from, to, t);
+            ApplyRatio(currentRatio);
+            yield return null;
+        }
+
+        currentRatio = to;
+        ApplyRatio(currentRatio);
+        activeRoutine = null;
+    }
+
+    private void ApplyRatio(float ratio)
+    {
+        Vector3 scale = fillRenderer.transform.localScale;
+        scale.x = fullScaleX * ratio;
+        fillRenderer.transform.localScale = scale;
     }
 }

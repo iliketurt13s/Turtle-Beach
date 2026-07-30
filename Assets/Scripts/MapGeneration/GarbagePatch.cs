@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 
 /// <summary>
@@ -90,7 +91,7 @@ public class GarbagePatch : MonoBehaviour
         }
     }
 
-    /// <summary>No-ops if already depleted. Decrements health, pushes the new value to the health bar, and once it newly reaches 0 raises Depleted then destroys this patch entirely (debris pile and all) rather than leaving an empty husk orbiting until the next island's spawn replaces it.</summary>
+    /// <summary>No-ops if already depleted. Decrements health, pushes the new value to the health bar, and once it newly reaches 0 raises Depleted immediately then destroys this patch entirely (debris pile and all) once the health bar finishes visually draining to zero — see DestroyAfterHealthBarSettles — rather than cutting it off mid-animation.</summary>
     public void TakeHit()
     {
         if (CurrentHealth <= 0) return;
@@ -102,7 +103,17 @@ public class GarbagePatch : MonoBehaviour
         if (CurrentHealth <= 0)
         {
             Depleted?.Invoke();
-            Destroy(gameObject);
+            StartCoroutine(DestroyAfterHealthBarSettles());
         }
+    }
+
+    private IEnumerator DestroyAfterHealthBarSettles()
+    {
+        if (healthBar != null)
+        {
+            yield return new WaitUntil(() => !healthBar.IsAnimating);
+        }
+
+        Destroy(gameObject);
     }
 }

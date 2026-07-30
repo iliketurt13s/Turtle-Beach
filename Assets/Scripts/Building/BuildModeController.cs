@@ -167,10 +167,14 @@ public class BuildModeController : MonoBehaviour
         }
     }
 
-    /// <summary>Makes a buildable placeable from now on. Integration point for future "unlock a building" upgrade cards.</summary>
+    /// <summary>Makes a buildable placeable from now on. Integration point for future "unlock a building" upgrade cards. Notifies UI (SelectedBuildableChanged) immediately, so a newly-unlocked buildable shows up in BuildSelectionUI's adjacent slots right away rather than only after the player next scrolls.</summary>
     public void Unlock(BuildableDefinition buildable)
     {
-        if (buildable != null) unlockedBuildables.Add(buildable);
+        if (buildable != null)
+        {
+            unlockedBuildables.Add(buildable);
+            SelectedBuildableChanged?.Invoke();
+        }
     }
 
     /// <summary>True if buildable is currently placeable — either authored in Initially Unlocked or unlocked mid-run via Unlock. Lets an upgrade card gate itself behind a specific building already being unlocked (see IRequiresBuilding), so "branch" upgrades only start appearing once their building does.</summary>

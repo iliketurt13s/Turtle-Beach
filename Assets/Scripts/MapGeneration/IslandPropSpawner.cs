@@ -7,10 +7,13 @@ using UnityEngine.Tilemaps;
 /// Scatters the game's nature prefabs (trees, rocks, etc. — each carrying a
 /// ResourceNode, so turtles can harvest them) across land (sand) cells after
 /// the island generates: a random prefab per spawn, jittered within its cell
-/// so placement doesn't look grid-snapped. Subscribes to
-/// IslandGenerator.IslandGenerated so it automatically re-scatters whenever the
-/// island regenerates. There's no separate purely-decorative prop layer —
-/// every nature object spawned here is a real, collectible resource.
+/// so placement doesn't look grid-snapped. No two resources ever land in
+/// orthogonally-adjacent cells (see HasOrthogonalNeighborUsed) — diagonal
+/// adjacency is still fine — so the scatter never reads as unnaturally dense
+/// clumps. Subscribes to IslandGenerator.IslandGenerated so it automatically
+/// re-scatters whenever the island regenerates. There's no separate
+/// purely-decorative prop layer — every nature object spawned here is a real,
+/// collectible resource.
 /// </summary>
 public class IslandPropSpawner : MonoBehaviour
 {
@@ -163,14 +166,22 @@ public class IslandPropSpawner : MonoBehaviour
 
         int spawned = 0;
         int attempts = 0;
-        int maxAttempts = count * 20;
+        // Bumped from a flat count*20 — the orthogonal-neighbor exclusion below
+        // makes valid cells sparser as usedCells fills up (worst case
+        // approaches a checkerboard, ~half of cells simultaneously valid), and
+        // this cap (not the usedCells.Count < landCells.Count check below) is
+        // what actually bounds the loop once cells can become unreachable well
+        // before every one is claimed. Cheap either way (RNG + HashSet lookups
+        // only), so a generous multiplier costs microseconds.
+        int maxAttempts = count * 40;
 
         while (spawned < count && attempts < maxAttempts && usedCells.Count < landCells.Count)
         {
             attempts++;
 
             Vector3Int cell = landCells[rng.Next(landCells.Count)];
-            if (!usedCells.Add(cell)) continue;
+            if (usedCells.Contains(cell) || HasOrthogonalNeighborUsed(cell, usedCells)) continue;
+            usedCells.Add(cell);
 
             GameObject prefab = prefabs[rng.Next(prefabs.Length)];
             Vector3 basePosition = sandTilemap.GetCellCenterWorld(cell);
@@ -193,6 +204,15 @@ public class IslandPropSpawner : MonoBehaviour
         }
 
         return spawned;
+    }
+
+    /// <summary>True if any of cell's 4 orthogonal (not diagonal) neighbors is already claimed in usedCells — enforces "no two resources directly adjacent" while still allowing diagonal adjacency, mirroring WallAutoTile's own orthogonal-neighbor convention.</summary>
+    private static bool HasOrthogonalNeighborUsed(Vector3Int cell, HashSet<Vector3Int> usedCells)
+    {
+        return usedCells.Contains(cell + Vector3Int.up)
+            || usedCells.Contains(cell + Vector3Int.down)
+            || usedCells.Contains(cell + Vector3Int.left)
+            || usedCells.Contains(cell + Vector3Int.right);
     }
 
     private void ClearProps()
