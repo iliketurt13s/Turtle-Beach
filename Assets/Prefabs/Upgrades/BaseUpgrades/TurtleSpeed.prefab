@@ -48,4 +48,5 @@ MonoBehaviour:
   icon: {fileID: 8106676360282894503, guid: 5b8c060f9187d6d4899bccdd90d3d78e, type: 3}
   description: Turtles move across the island 10% faster at all times
   stackable: 1
+  baseStatUpgrade: 1
   speedMultiplier: 1.1

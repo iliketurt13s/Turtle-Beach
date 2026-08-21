@@ -49,4 +49,5 @@ MonoBehaviour:
   description: Turtles have a +25% chance to land critical hits on trash, doing double
     damage.
   stackable: 1
+  baseStatUpgrade: 1
   critChanceAdded: 0.25

@@ -1,0 +1,69 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &8881892902427465663
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 8052152669035122829}
+  - component: {fileID: 6212165925925917673}
+  - component: {fileID: 509456350866808253}
+  m_Layer: 0
+  m_Name: ModifiersCatalog
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &8052152669035122829
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8881892902427465663}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 369.15472, y: 391.19934, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &6212165925925917673
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8881892902427465663}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b230ad06d920454c8c16059fd23b658, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GameModifierCatalog
+  modifiers:
+  - {fileID: -8086635643988952500, guid: eba6000f332b93748a59f594b552dd51, type: 3}
+  - {fileID: -5579621418769405338, guid: 6fa6c549265a0d44da2930e111c37a90, type: 3}
+  - {fileID: 8148915008057056481, guid: 7233535e8d9a76745bbd3317c52cdd1e, type: 3}
+  - {fileID: -7036766767383449317, guid: eb993977dc492eb409bfd81a202ffab7, type: 3}
+  - {fileID: 875154294759693598, guid: ce97d131b4fa51146b78675356e40466, type: 3}
+  - {fileID: -6607990429612198491, guid: 4fbb51ddfb59b674a8afccadaaa37beb, type: 3}
+--- !u!114 &509456350866808253
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8881892902427465663}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8e9ef619375c8024c8ec378023e2abd4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ProgressionCatalog
+  baseXpPerLevel: 2000
+  xpIncreasePercentPerLevel: 45
+  levelCap: 10

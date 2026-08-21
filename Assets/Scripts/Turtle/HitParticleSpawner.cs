@@ -33,6 +33,15 @@ public class HitParticleSpawner : MonoBehaviour
         if (particlePrefab == null) return;
         if (!other.CompareTag(foodTag) && !other.CompareTag(trashTag)) return;
 
+        // Coral is scenery a turtle swims straight through, not something it
+        // strikes, so it gets no hit flash however the prefab happens to be
+        // tagged (duplicating a nature prefab to make one leaves it tagged
+        // food). A head trigger overlaps coral even though the turtle's body
+        // passes through it — the body is on the Turtle layer, which is
+        // excluded from Building, but the Head child sits on Default, which
+        // isn't — so this is the only thing stopping the flash.
+        if (other.GetComponentInParent<CoralReef>() != null) return;
+
         Vector3 hitPoint = other.ClosestPoint(transform.position);
         ParticleSystem instance = Instantiate(particlePrefab, hitPoint, Quaternion.identity);
 

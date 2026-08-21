@@ -19,6 +19,11 @@ public class SeaweedUpgradeCard : UpgradeCardDefinition
     public override void Apply()
     {
         SpawnOnCurrentIsland();
+        // Also recorded as a run-state flag, which is what the food-branch
+        // cards' IRequiresUpgrade gates read (see
+        // UpgradeManager.UnlockedFoodTypeCount) — unlike Coconut and
+        // Jellyfish, this card sets no number they could infer it from.
+        UpgradeManager.Instance?.UnlockSeaweed();
         UpgradeManager.Instance?.RegisterPerIslandRespawn(SpawnOnCurrentIsland);
     }
 

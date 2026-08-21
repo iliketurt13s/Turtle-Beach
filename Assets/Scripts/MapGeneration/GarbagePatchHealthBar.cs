@@ -2,6 +2,14 @@ using System.Collections;
 using UnityEngine;
 
 /// <summary>
+/// UNUSED as of the debris-pile overhaul: GarbagePatch no longer holds a
+/// reference to this or drives it, because the pile itself now shows the
+/// patch's health by visibly wearing away (see GarbagePatch's class doc
+/// comment). The file is kept only so the bar object left in the prefab —
+/// deactivated, not deleted — doesn't turn into a missing-script reference.
+/// Delete both together if the bar is never coming back; nothing else will
+/// break.
+///
 /// Continuous world-space health bar for GarbagePatch — a single fill sprite
 /// (pivot at its left edge, so scaling local X shrinks it from the right,
 /// same convention as BuildingHealthBar.SetHealth) rather than the old

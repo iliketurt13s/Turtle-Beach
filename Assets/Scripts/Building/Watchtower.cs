@@ -22,21 +22,36 @@ using UnityEngine;
 /// stationed turtle themselves and are what Update's own vacancy check
 /// below notices), or after, since a fresh order simply overrides the
 /// walk-back task the same way any other order overrides any other task.
+///
+/// Sand Boulder Roller (see SandBoulderRoller) is a subclass rather than a
+/// second copy of all this: everything above — stationing, dismissal, recall,
+/// eviction, the aim-and-fire loop — is identical for it, and only three
+/// things differ (which trash counts as a target, which way the projectile
+/// actually goes, and which upgrade track the range/fire rate come from).
+/// Those three are the protected virtuals below; the serialized fields are
+/// protected for the same reason. Nothing else here should need overriding,
+/// and a fourth tower type should extend this the same way.
 /// </summary>
 public class Watchtower : MonoBehaviour, IHasPlacementRange
 {
-    [SerializeField] private float targetRadius = 6f;
-    [SerializeField] private float fireInterval = 1.5f;
+    [SerializeField] protected float targetRadius = 6f;
+    [SerializeField] protected float fireInterval = 1.5f;
 
-    /// <summary>IHasPlacementRange implementation, so BuildModeController's ghost shows this tower's fire radius while it's selected for placement. No upgrade currently extends Target Radius (unlike the other two range buildings), but reading it live here costs nothing and needs no changes if one's ever added.</summary>
-    public float PlacementRange => targetRadius;
+    /// <summary>IHasPlacementRange implementation, so BuildModeController's ghost shows this tower's real (upgrade-inclusive) fire radius while it's selected for placement.</summary>
+    public float PlacementRange => EffectiveTargetRadius;
 
-    /// <summary>fireInterval shortened by any run-wide bonus from Watchtower-branch upgrade cards (see UpgradeManager.WatchtowerFireRateBonus), e.g. a 0.2 bonus fires every fireInterval / 1.2 seconds — read live, same pattern as Campfire.EffectiveSpeedBonus.</summary>
-    private float EffectiveFireInterval => fireInterval / (1f + (UpgradeManager.Instance != null ? UpgradeManager.Instance.WatchtowerFireRateBonus : 0f));
+    /// <summary>How far this tower can actually see, base radius plus whatever its own branch has added. Virtual because each tower type reads a different upgrade track — a plain Watchtower currently has no range card, so this is just the authored value.</summary>
+    protected virtual float EffectiveTargetRadius => targetRadius;
+
+    /// <summary>fireInterval shortened by any run-wide bonus from Watchtower-branch upgrade cards (see UpgradeManager.WatchtowerFireRateBonus), e.g. a 0.2 bonus fires every fireInterval / 1.2 seconds — read live, same pattern as Campfire.EffectiveSpeedBonus. Virtual so a different tower type isn't silently sped up by cards gated on the Watchtower being unlocked.</summary>
+    protected virtual float EffectiveFireInterval => fireInterval / (1f + (UpgradeManager.Instance != null ? UpgradeManager.Instance.WatchtowerFireRateBonus : 0f));
     [Tooltip("Where a stationed turtle is snapped to and held — typically the tower's own center. Defaults to this transform if left unassigned.")]
     [SerializeField] private Transform turtleDockPoint;
-    [SerializeField] private Transform firePoint;
-    [SerializeField] private GameObject sandBallPrefab;
+    [SerializeField] protected Transform firePoint;
+    [SerializeField] protected GameObject sandBallPrefab;
+
+    /// <summary>Where projectiles leave from — the assigned Fire Point, or this tower's own center if none was wired. Shared by targeting and firing so the two can never measure from different places.</summary>
+    protected Vector2 FireOrigin => firePoint != null ? (Vector2)firePoint.position : (Vector2)transform.position;
 
     private TurtleAgent linkedTurtle;
     private bool wasStorming;
@@ -117,19 +132,15 @@ public class Watchtower : MonoBehaviour, IHasPlacementRange
         linkedTurtle.MoveToBuilding(transform);
     }
 
-    /// <summary>Today: nearest trash in radius only. Swap just this method's body later to add line-of-sight without touching the firing loop above.</summary>
-    private TrashHealth FindTarget()
-    {
-        Vector2 origin = firePoint != null ? (Vector2)firePoint.position : (Vector2)transform.position;
-        return TrashHealth.FindNearest(origin, targetRadius);
-    }
+    /// <summary>Today: nearest trash in radius only. Swap just this method's body later to add line-of-sight without touching the firing loop above. Virtual because a tower that can only shoot along fixed lanes has to reject targets it physically cannot hit (see SandBoulderRoller).</summary>
+    protected virtual TrashHealth FindTarget() => TrashHealth.FindNearest(FireOrigin, EffectiveTargetRadius);
 
-    private void FireAt(TrashHealth target)
+    /// <summary>Spawns and launches one projectile at target. Virtual so a tower type can aim it somewhere other than straight at what it picked, or hand it different projectile stats.</summary>
+    protected virtual void FireAt(TrashHealth target)
     {
         if (sandBallPrefab == null) return;
 
-        Vector3 spawnPosition = firePoint != null ? firePoint.position : transform.position;
-        GameObject instance = Instantiate(sandBallPrefab, spawnPosition, Quaternion.identity);
+        GameObject instance = Instantiate(sandBallPrefab, FireOrigin, Quaternion.identity);
         int bonusDamage = UpgradeManager.Instance != null ? UpgradeManager.Instance.WatchtowerDamageBonus : 0;
         instance.GetComponent<SandBall>()?.Launch(target.transform.position, bonusDamage);
     }

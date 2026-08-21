@@ -50,9 +50,28 @@ public class UISlidePanel : MonoBehaviour
     private bool homeCaptured;
     private Coroutine activeRoutine;
 
+    /// <summary>This panel's authored on-screen position — where PlayIn lands. Safe to read before Awake (it captures on demand), which matters because another component on the SAME object can't otherwise tell the authored position apart from the off-screen one Awake immediately snaps to. See BuildMenuHudShift, which was reading exactly that stale value.</summary>
+    public Vector2 HomePosition
+    {
+        get
+        {
+            CaptureHome();
+            return homePosition;
+        }
+    }
+
+    /// <summary>How far this panel is currently displaced from fully closed — zero while parked off-screen, and the full travel once it's all the way in, tracking the slide frame by frame in between. Lets another element mirror this panel's movement exactly instead of running its own copy of the distance, duration and curve and hoping the two stay in sync (see BuildMenuHudShift).</summary>
+    public Vector2 CurrentDisplacement
+    {
+        get
+        {
+            CaptureHome();
+            return rect.anchoredPosition - offScreenPosition;
+        }
+    }
+
     private void Awake()
     {
-        rect = (RectTransform)transform;
         CaptureHome();
 
         // Starts off-screen by default so a panel driven manually (playInOnEnable
@@ -70,6 +89,9 @@ public class UISlidePanel : MonoBehaviour
 
     private void CaptureHome()
     {
+        // Resolved here rather than only in Awake: the accessors above are
+        // reachable from another component's Awake, which may run first.
+        if (rect == null) rect = (RectTransform)transform;
         if (homeCaptured) return;
 
         homeCaptured = true;
@@ -89,12 +111,12 @@ public class UISlidePanel : MonoBehaviour
         }
     }
 
-    /// <summary>Snaps to the off-screen start point, waits Start Delay, then animates to Home Position.</summary>
-    public void PlayIn()
+    /// <summary>Snaps to the off-screen start point, waits Start Delay, then animates to Home Position, invoking onComplete once it has actually arrived — mirroring PlayOut, so a caller sequencing a panel in and then doing something with it (see TutorialMentor, which types into a speech bubble only once its mentor has finished sliding on) doesn't have to keep its own duplicate copy of Duration and Start Delay to time that off.</summary>
+    public void PlayIn(Action onComplete = null)
     {
         CaptureHome();
         rect.anchoredPosition = offScreenPosition;
-        StartSlide(startDelay, offScreenPosition, homePosition, null);
+        StartSlide(startDelay, offScreenPosition, homePosition, onComplete);
     }
 
     /// <summary>Animates from wherever this panel currently is (normally Home Position) out to the off-screen point, then invokes onComplete — e.g. to deactivate the panel only once it's actually off-screen, rather than cutting the slide short. No delay, unlike PlayIn.</summary>

@@ -17,10 +17,10 @@ using UnityEngine;
 /// </summary>
 public class ResourceRespawnBooster : MonoBehaviour, IHasPlacementRange
 {
-    /// <summary>Which building-branch upgrade track (see FertilizerRangeUpgradeCard/PetRockRangeUpgradeCard etc.) this instance reads its live bonuses from — Fertilizer and PetRock are the same script/component but must upgrade independently, and Affected Types alone isn't a reliable way to tell them apart (it's free-form and could be reconfigured), so this is set explicitly per prefab instead.</summary>
-    private enum BoosterKind { Fertilizer, PetRock }
+    /// <summary>Which building-branch upgrade track (see FertilizerRangeUpgradeCard/PetRockRangeUpgradeCard etc.) this instance reads its live bonuses from — Fertilizer, PetRock and Algae are the same script/component but must upgrade independently, and Affected Types alone isn't a reliable way to tell them apart (it's free-form and could be reconfigured), so this is set explicitly per prefab instead.</summary>
+    private enum BoosterKind { Fertilizer, PetRock, Algae, PlanterPot }
 
-    [Tooltip("Which building this is for upgrade-card purposes (Fertilizer vs Pet Rock) — must match the prefab, since both share this script but upgrade independently.")]
+    [Tooltip("Which building this is for upgrade-card purposes (Fertilizer vs Pet Rock vs Algae vs Planter Pot) — must match the prefab, since they all share this script but upgrade independently. Algae and Planter Pot additionally do nothing at all until their own branch card (Algae Bloom / Root Network) is picked.")]
     [SerializeField] private BoosterKind kind = BoosterKind.Fertilizer;
     [Tooltip("Resource types this building speeds up the respawn of.")]
     [SerializeField] private ResourceManager.ResourceType[] affectedTypes;
@@ -47,7 +47,12 @@ public class ResourceRespawnBooster : MonoBehaviour, IHasPlacementRange
         get
         {
             if (UpgradeManager.Instance == null) return 0f;
-            return kind == BoosterKind.Fertilizer ? UpgradeManager.Instance.FertilizerRangeBonus : UpgradeManager.Instance.PetRockRangeBonus;
+            return kind switch
+            {
+                BoosterKind.Fertilizer => UpgradeManager.Instance.FertilizerRangeBonus,
+                BoosterKind.PetRock => UpgradeManager.Instance.PetRockRangeBonus,
+                _ => 0f, // Algae and Planter Pot have no range/respawn branch cards of their own — only the on/off unlock below
+            };
         }
     }
 
@@ -56,9 +61,29 @@ public class ResourceRespawnBooster : MonoBehaviour, IHasPlacementRange
         get
         {
             if (UpgradeManager.Instance == null) return 0f;
-            return kind == BoosterKind.Fertilizer ? UpgradeManager.Instance.FertilizerRespawnBonus : UpgradeManager.Instance.PetRockRespawnBonus;
+            return kind switch
+            {
+                BoosterKind.Fertilizer => UpgradeManager.Instance.FertilizerRespawnBonus,
+                BoosterKind.PetRock => UpgradeManager.Instance.PetRockRespawnBonus,
+                _ => 0f,
+            };
         }
     }
+
+    /// <summary>
+    /// False for the two kinds that are gated behind a card of their own — an
+    /// Algae pile before Algae Bloom, a Planter Pot before Root Network. Both
+    /// prefabs carry this component from the moment they are placed, and this
+    /// is what keeps them completely inert (no boosting, no visual) until that
+    /// card turns the branch on, so already-placed ones start fertilizing the
+    /// instant it is picked with nothing to retrofit.
+    /// </summary>
+    private bool IsBoostingEnabled => kind switch
+    {
+        BoosterKind.Algae => UpgradeManager.Instance != null && UpgradeManager.Instance.AlgaeFertilizerUnlocked,
+        BoosterKind.PlanterPot => UpgradeManager.Instance != null && UpgradeManager.Instance.PlanterPotFertilizerUnlocked,
+        _ => true,
+    };
 
     private readonly HashSet<ResourceNode> boostedNodes = new HashSet<ResourceNode>();
 
@@ -72,6 +97,13 @@ public class ResourceRespawnBooster : MonoBehaviour, IHasPlacementRange
 
     private void Update()
     {
+        if (!IsBoostingEnabled)
+        {
+            ReleaseAllBoosts();
+            if (boostVisual != null) boostVisual.SetActive(false);
+            return;
+        }
+
         UpdateProximityRange();
         if (boostVisual != null) boostVisual.SetActive(boostedNodes.Count > 0);
         SyncRangeParticles();
@@ -132,6 +164,14 @@ public class ResourceRespawnBooster : MonoBehaviour, IHasPlacementRange
     private void OnDisable()
     {
         // Building destroyed/disabled while still boosting nodes — release them all.
+        ReleaseAllBoosts();
+    }
+
+    /// <summary>Unregisters from every node currently being boosted. Shared by OnDisable and by the Algae-not-yet-unlocked early-out in Update, so switching off mid-boost can never leave a node holding a stale reference that keeps speeding its respawn up forever.</summary>
+    private void ReleaseAllBoosts()
+    {
+        if (boostedNodes.Count == 0) return;
+
         foreach (ResourceNode node in boostedNodes)
         {
             if (node != null) node.UnregisterBooster(this);

@@ -11,5 +11,20 @@ public class UnlockTrashUpgradeCard : UpgradeCardDefinition
 {
     [SerializeField] private GameObject trashPrefab;
 
-    public override void Apply() => TrashSpawner.Instance?.Unlock(trashPrefab);
+    public override void Apply()
+    {
+        if (trashPrefab == null)
+        {
+            Debug.LogError($"UnlockTrashUpgradeCard ({DisplayName}): Trash Prefab is unassigned — nothing was unlocked.");
+            return;
+        }
+
+        if (TrashSpawner.Instance == null)
+        {
+            Debug.LogError($"UnlockTrashUpgradeCard ({DisplayName}): no TrashSpawner in the scene — \"{trashPrefab.name}\" was NOT unlocked.");
+            return;
+        }
+
+        TrashSpawner.Instance.Unlock(trashPrefab);
+    }
 }

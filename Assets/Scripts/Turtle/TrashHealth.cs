@@ -59,6 +59,12 @@ public class TrashHealth : MonoBehaviour
         // attack anything it's dragged into.
         if (attacker.IsSelected) return;
 
+        // A crab recruit deals no damage until the Crab Warriors card is
+        // picked — see CrabAgent. Same flag keeps it from ever aggroing, so a
+        // pre-Warriors crab only ever reaches trash by physically bumping into
+        // it, and that bump does nothing.
+        if (!attacker.CanAttackTrash) return;
+
         int baseDamage = damagePerHit + attacker.BonusDamageToTrash;
         bool isCrit = UnityEngine.Random.value < attacker.CritChance;
         int totalDamage = isCrit ? baseDamage * 2 : baseDamage;
@@ -66,6 +72,12 @@ public class TrashHealth : MonoBehaviour
 
         currentHealth -= totalDamage;
         squashAndStretch?.Play();
+
+        // The attacker's own hit sound, so a turtle sounds the same striking
+        // trash as it does striking anything else. Played from this side
+        // because this is where a turtle-vs-trash hit is actually adjudicated:
+        // TurtleAgent.HandleHeadHit never sees trash at all.
+        attacker.PlayHeadHitSound();
 
         if (glueSlowOnHit != null) glueSlowOnHit.ApplySlow(attacker);
 
@@ -90,7 +102,7 @@ public class TrashHealth : MonoBehaviour
     {
         if (definition != null)
         {
-            ScoreManager.Instance?.AddScore(Mathf.RoundToInt(definition.Rating * 2f));
+            ScoreManager.Instance?.AddTrashScore(Mathf.RoundToInt(definition.Rating * 2f));
 
             if (UpgradeManager.Instance != null && UpgradeManager.Instance.TrashDeathDropsUnlocked)
             {
@@ -103,7 +115,7 @@ public class TrashHealth : MonoBehaviour
     }
 
     /// <summary>Finds the closest currently-alive trash within maxDistance of position, or null if none.</summary>
-    public static TrashHealth FindNearest(Vector2 position, float maxDistance)
+    public static TrashHealth FindNearest(Vector2 position, float maxDistance, Func<TrashHealth, bool> filter = null)
     {
         TrashHealth nearest = null;
         float nearestSqrDistance = maxDistance * maxDistance;
@@ -111,6 +123,10 @@ public class TrashHealth : MonoBehaviour
         foreach (TrashHealth trash in allTrash)
         {
             if (trash == null) continue;
+            // Applied inside the scan rather than to its result, so a rejected
+            // piece of trash sitting closest can't hide an acceptable one just
+            // behind it (see TurtleAgent's leash, the only caller today).
+            if (filter != null && !filter(trash)) continue;
 
             float sqrDistance = ((Vector2)trash.transform.position - position).sqrMagnitude;
             if (sqrDistance <= nearestSqrDistance)

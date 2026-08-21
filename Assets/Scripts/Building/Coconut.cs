@@ -28,7 +28,20 @@ public class Coconut : MonoBehaviour
         if (attacker == null) return false;
 
         hitsTaken++;
-        attacker.CollectResourceUnit(ResourceManager.ResourceType.Coconut, transform.position);
+
+        // Same double-harvest roll a ResourceNode hit gets (see
+        // TurtleAgent.HandleHeadHit) — the Barnacle Rakes card is what makes
+        // this ever return 2 for a food type. hitsTaken deliberately stays at
+        // one per hit regardless, so the upgrade yields more per bump without
+        // also making coconuts run out in fewer bumps.
+        int amount = UpgradeManager.Instance != null
+            ? UpgradeManager.Instance.RollHarvestAmount(ResourceManager.ResourceType.Coconut, attacker)
+            : 1;
+
+        for (int i = 0; i < amount; i++)
+        {
+            if (!attacker.CollectResourceUnit(ResourceManager.ResourceType.Coconut, transform.position)) break; // full — no loss, just stop adding
+        }
 
         bool consumed = hitsTaken >= hitsRequired;
         if (consumed) Destroy(gameObject);

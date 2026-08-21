@@ -231,7 +231,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TrashHealth
   maxHealth: 5
-  damagePerHit: 3
+  damagePerHit: 1
 --- !u!114 &542222326541177437
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -245,8 +245,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TrashDefinition
   displayName: Plastic Straw
-  rating: 6
-  towerDamageMultiplier: 2
+  rating: 3
+  towerDamageMultiplier: 3
   deathDropPrefabs: []
   deathDropCount: 0
   deathDropSpawnRadius: 0

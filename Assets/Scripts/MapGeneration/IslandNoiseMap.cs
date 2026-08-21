@@ -430,6 +430,262 @@ public static class IslandNoiseMap
         queue.Enqueue(new Vector2Int(x, y));
     }
 
+    /// <summary>Tuning for CarveChunks — see there for what each one does to the result.</summary>
+    public struct ChunkCarveSettings
+    {
+        /// <summary>Total land tiles to remove. The carve hits this exactly unless it runs out of carvable land first.</summary>
+        public int TileBudget;
+        /// <summary>How many separate contiguous chunks that budget is split across.</summary>
+        public int ChunkCount;
+        /// <summary>0-1. How unevenly the budget is split — 0 makes every chunk the same size, 1 lets one be anywhere from nothing to double the average.</summary>
+        public float ChunkSizeVariance;
+        /// <summary>0-1. Chance each chunk starts from a coastal tile (biting into the outline) rather than anywhere on the island (opening a lagoon).</summary>
+        public float CoastalBias;
+        /// <summary>Chebyshev radius around the map center that is never carved — the nest's ground. Match ForceCenterLand's radius.</summary>
+        public int ProtectedCenterRadius;
+        /// <summary>Carving stops rather than taking the island below this many tiles. A floor against a budget typed with an extra digit.</summary>
+        public int MinRemainingLand;
+    }
+
+    /// <summary>
+    /// Removes TileBudget land tiles from an already-finished land mask, in
+    /// ChunkCount contiguous chunks, in place.
+    ///
+    /// The deliberate counterpart to the crescent bite in GenerateBlobField.
+    /// That one is a chance-weighted subtraction from the shape FIELD, before
+    /// thresholding, calibration and smoothing have had their say — so how much
+    /// land it actually costs is an emergent property of the whole pipeline and
+    /// differs run to run even at identical settings. Here the amount IS the
+    /// input, applied to the finished mask, where a tile removed is a tile
+    /// removed.
+    ///
+    /// Each chunk grows outward from its own seed cell one tile at a time,
+    /// taking a random cell off the growing region's border each step. That's
+    /// deliberately not a stamped disc: a disc would come out perfectly round,
+    /// and since its area goes as the square of its radius, only coarsely
+    /// sizeable. Frontier growth is ragged, always connected, and lands on
+    /// exactly the requested count.
+    ///
+    /// Two guards keep the result playable. The Chebyshev disc around the map
+    /// center (the nest's ground — see ForceCenterLand) is never carved, and
+    /// carving stops rather than taking the island below Min Remaining Land.
+    /// Carving CAN still sever an outlying limb from the island, though, so run
+    /// KeepIslandContainingCenter again afterwards — that's what discards it,
+    /// and it's why the finished island can end up smaller than the budget
+    /// alone would predict.
+    ///
+    /// Returns the mask of exactly which cells were taken, so the caller can
+    /// treat carved water differently from open ocean (see IslandGenerator's
+    /// Carved Water Stays Shallow).
+    /// </summary>
+    public static bool[,] CarveChunks(bool[,] land, ChunkCarveSettings settings, int seed)
+    {
+        int width = land.GetLength(0);
+        int height = land.GetLength(1);
+        bool[,] carved = new bool[width, height];
+
+        int chunkCount = Mathf.Max(0, settings.ChunkCount);
+        if (chunkCount == 0 || settings.TileBudget <= 0) return carved;
+
+        int budget = Mathf.Min(settings.TileBudget, CountLand(land) - Mathf.Max(0, settings.MinRemainingLand));
+        if (budget <= 0) return carved;
+
+        // Offset from the caller's seed rather than used raw: the blob chain
+        // was drawn from that same seed, and a carve replaying the same
+        // sequence would tie where every chunk lands to the shape it's cutting
+        // into. Still fully reproducible from the logged seed.
+        System.Random rng = new System.Random(seed + 7919);
+
+        int[] chunkSizes = SplitCarveBudget(budget, chunkCount, settings.ChunkSizeVariance, rng);
+        int removedTotal = 0;
+        int plannedSoFar = 0;
+
+        for (int i = 0; i < chunkSizes.Length; i++)
+        {
+            plannedSoFar += chunkSizes[i];
+
+            // Each chunk owes its own share PLUS anything earlier chunks failed
+            // to deliver. A chunk CAN come up short — it seeds on a fragment an
+            // earlier chunk cut loose from the mainland and eats the whole
+            // thing before filling its share — and without carrying that
+            // forward the pass quietly returns less land than was asked for,
+            // which is the entire thing this system exists to stop doing.
+            int want = Mathf.Min(plannedSoFar - removedTotal, budget - removedTotal);
+            if (want <= 0) continue;
+
+            Vector2Int? start = PickCarveSeed(land, settings, rng);
+            if (start == null) break;
+
+            removedTotal += GrowCarve(land, carved, start.Value, want, settings.ProtectedCenterRadius, rng);
+        }
+
+        // Last resort, and rare: even the final chunk came up short, so open
+        // extra ones until the budget is met. This is the one case that can
+        // produce more chunks than were asked for — a deliberate trade, since
+        // Chunk Count describes how the loss is distributed while Tile Budget
+        // describes how much of it there is, and the amount is the promise.
+        // Terminates on its own: every pass either takes at least one tile or
+        // finds nothing left to take.
+        while (removedTotal < budget)
+        {
+            Vector2Int? start = PickCarveSeed(land, settings, rng);
+            if (start == null) break;
+
+            int removed = GrowCarve(land, carved, start.Value, budget - removedTotal, settings.ProtectedCenterRadius, rng);
+            if (removed <= 0) break;
+
+            removedTotal += removed;
+        }
+
+        return carved;
+    }
+
+    /// <summary>Divides budget across count chunks, jittered by variance. The rounding remainder goes to the last chunk, so the sizes always add back up to exactly budget rather than drifting a few tiles under it.</summary>
+    private static int[] SplitCarveBudget(int budget, int count, float variance, System.Random rng)
+    {
+        float clampedVariance = Mathf.Clamp01(variance);
+        float[] weights = new float[count];
+        float total = 0f;
+
+        for (int i = 0; i < count; i++)
+        {
+            weights[i] = 1f + ((float)rng.NextDouble() * 2f - 1f) * clampedVariance;
+            total += weights[i];
+        }
+
+        int[] sizes = new int[count];
+
+        // Every weight came out at zero (variance 1 and a very unlucky draw) —
+        // fall back to an even split rather than dividing by zero.
+        if (total <= 0f)
+        {
+            for (int i = 0; i < count; i++) sizes[i] = budget / count;
+            sizes[count - 1] += budget - budget / count * count;
+            return sizes;
+        }
+
+        int assigned = 0;
+        for (int i = 0; i < count - 1; i++)
+        {
+            sizes[i] = Mathf.RoundToInt(budget * (weights[i] / total));
+            assigned += sizes[i];
+        }
+
+        sizes[count - 1] = Mathf.Max(0, budget - assigned);
+        return sizes;
+    }
+
+    /// <summary>Picks the land cell a chunk grows from: a coastal one (at least one water neighbor) with probability Coastal Bias, otherwise anywhere on the island. Coastal seeds eat into the outline, which is what carving usually wants; an inland one opens a lagoon instead. Never returns a cell inside the protected center. Null once there is no eligible land left at all.</summary>
+    private static Vector2Int? PickCarveSeed(bool[,] land, ChunkCarveSettings settings, System.Random rng)
+    {
+        int width = land.GetLength(0);
+        int height = land.GetLength(1);
+
+        List<Vector2Int> anywhere = new List<Vector2Int>();
+        List<Vector2Int> coastal = new List<Vector2Int>();
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                if (!land[x, y] || IsProtectedCenter(x, y, width, height, settings.ProtectedCenterRadius)) continue;
+
+                Vector2Int cell = new Vector2Int(x, y);
+                anywhere.Add(cell);
+                if (HasWaterNeighbor(land, x, y)) coastal.Add(cell);
+            }
+        }
+
+        bool preferCoast = coastal.Count > 0 && rng.NextDouble() < Mathf.Clamp01(settings.CoastalBias);
+        List<Vector2Int> pool = preferCoast ? coastal : anywhere;
+
+        return pool.Count > 0 ? pool[rng.Next(pool.Count)] : (Vector2Int?)null;
+    }
+
+    /// <summary>Grows one chunk from start until budget tiles have been taken or it runs out of land to spread into, clearing them from land and recording them in carved. Returns how many it actually took, which is short of budget exactly when it ran out of room — see CarveChunks, which makes that up elsewhere.</summary>
+    private static int GrowCarve(bool[,] land, bool[,] carved, Vector2Int start, int budget, int protectedRadius, System.Random rng)
+    {
+        int width = land.GetLength(0);
+        int height = land.GetLength(1);
+
+        List<Vector2Int> frontier = new List<Vector2Int> { start };
+        int removed = 0;
+
+        while (removed < budget && frontier.Count > 0)
+        {
+            // Swap-remove: the cell is chosen at random anyway, so keeping the
+            // frontier in the order it was built costs a shuffle down the list
+            // and buys nothing.
+            int index = rng.Next(frontier.Count);
+            Vector2Int cell = frontier[index];
+            frontier[index] = frontier[frontier.Count - 1];
+            frontier.RemoveAt(frontier.Count - 1);
+
+            // A cell reaches the frontier once per land neighbor that queued
+            // it, and an earlier chunk may have taken it in between — so this
+            // is the normal case, not an error case.
+            if (!land[cell.x, cell.y]) continue;
+            if (IsProtectedCenter(cell.x, cell.y, width, height, protectedRadius)) continue;
+
+            land[cell.x, cell.y] = false;
+            carved[cell.x, cell.y] = true;
+            removed++;
+
+            EnqueueCarveNeighbor(land, frontier, cell.x + 1, cell.y, width, height);
+            EnqueueCarveNeighbor(land, frontier, cell.x - 1, cell.y, width, height);
+            EnqueueCarveNeighbor(land, frontier, cell.x, cell.y + 1, width, height);
+            EnqueueCarveNeighbor(land, frontier, cell.x, cell.y - 1, width, height);
+        }
+
+        return removed;
+    }
+
+    private static void EnqueueCarveNeighbor(bool[,] land, List<Vector2Int> frontier, int x, int y, int width, int height)
+    {
+        if (x < 0 || x >= width || y < 0 || y >= height) return;
+        if (!land[x, y]) return;
+
+        frontier.Add(new Vector2Int(x, y));
+    }
+
+    /// <summary>True if this land cell touches water on any of its four sides — the map's own edge counting as water, so a cell there still reads as coast.</summary>
+    private static bool HasWaterNeighbor(bool[,] land, int x, int y)
+    {
+        int width = land.GetLength(0);
+        int height = land.GetLength(1);
+
+        if (x + 1 >= width || !land[x + 1, y]) return true;
+        if (x - 1 < 0 || !land[x - 1, y]) return true;
+        if (y + 1 >= height || !land[x, y + 1]) return true;
+        if (y - 1 < 0 || !land[x, y - 1]) return true;
+
+        return false;
+    }
+
+    private static bool IsProtectedCenter(int x, int y, int width, int height, int radius)
+    {
+        if (radius < 0) return false;
+
+        return Mathf.Abs(x - width / 2) <= radius && Mathf.Abs(y - height / 2) <= radius;
+    }
+
+    private static int CountLand(bool[,] land)
+    {
+        int count = 0;
+        int width = land.GetLength(0);
+        int height = land.GetLength(1);
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                if (land[x, y]) count++;
+            }
+        }
+
+        return count;
+    }
+
     /// <summary>
     /// Stamps a guaranteed-land disc (Chebyshev radius) around the map's center
     /// cell, in place. Guarantees the TurtleNest — always spawned at cell (0,0)

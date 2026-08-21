@@ -263,8 +263,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b0a6413cce1049c4bb1f051e72d83918, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BatteryAcidOnDeath
-  acidRadius: 2
-  acidDamage: 8
+  acidRadius: 1.5
+  acidDamage: 5
   acidParticlePrefab: {fileID: 3141070248870392403, guid: 5656816a692c12f489fd5d30aa4ee2a7, type: 3}
 --- !u!114 &-5610131005954420066
 MonoBehaviour:

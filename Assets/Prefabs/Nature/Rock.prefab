@@ -258,6 +258,15 @@ MonoBehaviour:
   visual: {fileID: 2435642429919565962}
   dropPrefab: {fileID: 891772943774278084, guid: 635dca1eea0c93d429aac2e649d0353f, type: 3}
   dropSpawnRadius: 0.5
+  harvestHitSound:
+    clips:
+    - {fileID: 8300000, guid: 297b83e7c9b2f0241803ef1390b8ea03, type: 3}
+    - {fileID: 8300000, guid: 7799617356f6bcd4db554dc56b769fce, type: 3}
+    volume: 1
+    pitchRange: {x: 0.94, y: 1.06}
+    minInterval: 0.06
+    maxVoices: 4
+    maxAudibleDistance: 0
 --- !u!50 &8654395565653072041
 Rigidbody2D:
   serializedVersion: 5

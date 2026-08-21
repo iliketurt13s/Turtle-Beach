@@ -64,6 +64,9 @@ public class TrashSpawner : MonoBehaviour
     [Tooltip("Check this and set Seed above to reproduce a specific trash layout.")]
     [SerializeField] private bool useFixedSeed = false;
 
+    /// <summary>Extra clumps a round's trash is split across, from the Scattered Tide run modifier (see AddClusterCountBonus). Added to BOTH ends of the Min/Max roll, so it lifts the whole range rather than only widening it — the point of that modifier is that every round arrives on more fronts at once, not that some rounds might.</summary>
+    private int clusterCountBonus;
+
     private readonly List<GameObject> spawnedTrash = new List<GameObject>();
 
     /// <summary>Safety cap on spawn attempts so a misconfigured (e.g. all-zero-rating) prefab pool can't loop forever.</summary>
@@ -97,10 +100,46 @@ public class TrashSpawner : MonoBehaviour
         if (Instance == this) Instance = null;
     }
 
-    /// <summary>Makes prefab spawnable from now on (e.g. from a hazard upgrade card). No-op if already unlocked.</summary>
+    /// <summary>Makes prefab spawnable from now on (e.g. from a run modifier). No-op if already unlocked. Warns if prefab isn't in Trash Prefabs at all — unlocking something the round picker never iterates is silently useless, and since these are asset references it's easy to point a modifier at a different prefab asset than the one wired into the pool.</summary>
     public void Unlock(GameObject prefab)
     {
-        if (prefab != null) unlockedTrash.Add(prefab);
+        if (prefab == null) return;
+
+        bool inPool = false;
+        if (trashPrefabs != null)
+        {
+            foreach (GameObject pooled in trashPrefabs)
+            {
+                if (pooled == prefab) { inPool = true; break; }
+            }
+        }
+
+        if (!inPool)
+        {
+            Debug.LogError($"TrashSpawner: \"{prefab.name}\" was unlocked but is NOT in this spawner's Trash Prefabs array, so it can never spawn. Add that exact prefab asset to Trash Prefabs.");
+            return;
+        }
+
+        if (unlockedTrash.Add(prefab))
+        {
+            Debug.Log($"TrashSpawner: unlocked \"{prefab.name}\" (rating {GetRating(prefab)}) — it can spawn once a round's budget can afford it.");
+        }
+    }
+
+    /// <summary>
+    /// Permanently raises how many separate clumps every future round's trash
+    /// is scattered into, for the Scattered Tide run modifier. Additive so
+    /// repeat applications compose.
+    ///
+    /// Deliberately touches the cluster count only, not the rating budget:
+    /// the same amount of trash arriving as six loose fronts instead of two
+    /// dense ones is the whole hardship, because a defense built to hold one
+    /// approach now has to hold the whole coastline.
+    /// </summary>
+    public void AddClusterCountBonus(int extraClusters)
+    {
+        clusterCountBonus += Mathf.Max(0, extraClusters);
+        Debug.Log($"TrashSpawner: cluster count bonus now +{clusterCountBonus} (rounds now split across {minClusterCount + clusterCountBonus}-{Mathf.Max(minClusterCount, maxClusterCount) + clusterCountBonus} clumps).");
     }
 
     /// <summary>Tracks an externally-instantiated trash instance (e.g. TrashDefinition.SpawnDeathDrops) in the same round-tracking list SpawnRound uses, so AnyTrashAlive/BeginFadeOutAndClear correctly account for it too instead of leaving it to wander after the storm ends.</summary>
@@ -144,10 +183,15 @@ public class TrashSpawner : MonoBehaviour
         // toward 1 (i.e. toward Max Cluster Count), and k itself grows with
         // how far this round's budget sits past the reference point, so a
         // bigger round more reliably nets more, bigger clumps of trash.
+        // The bonus shifts both ends of the roll rather than being folded into
+        // clusterRange, so the budget bias below still spans exactly the
+        // authored width and a modified round is uniformly more scattered
+        // instead of merely more variable.
+        int effectiveMinClusters = minClusterCount + clusterCountBonus;
         int clusterRange = Mathf.Max(minClusterCount, maxClusterCount) - minClusterCount;
         float budgetRatio = ratingBudget / clusterCountBudgetReference;
         float biasExponent = 1f / (1f + clusterCountBudgetBias * budgetRatio);
-        int rolledClusterCount = minClusterCount + Mathf.RoundToInt(Mathf.Pow((float)rng.NextDouble(), biasExponent) * clusterRange);
+        int rolledClusterCount = effectiveMinClusters + Mathf.RoundToInt(Mathf.Pow((float)rng.NextDouble(), biasExponent) * clusterRange);
         int clusters = Mathf.Max(1, Mathf.Min(rolledClusterCount, waterCells.Count));
         List<Vector3Int> clusterCenters = new List<Vector3Int>();
         for (int i = 0; i < clusters; i++)

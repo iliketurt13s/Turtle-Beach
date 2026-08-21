@@ -10,7 +10,9 @@ using UnityEngine.Tilemaps;
 /// Always avoids "nature" (ResourceNode) obstacles — buildings are never
 /// avoided, since turtles already pass through non-interactable ones and
 /// trash is meant to ram walls. Optionally (see FindPath's avoidDeepWater)
-/// also avoids every deep-water cell, for turtles specifically. The
+/// also avoids every deep-water cell, for turtles specifically, and
+/// (see FindPath's avoidCoral, on by default) every CoralReef cell, which
+/// turtles alone opt out of since a reef is a wall for trash only. The
 /// ResourceNode-derived part of the blocked-cell set (BuildBlockedCells) is
 /// rebuilt fresh on every call — both FindPath's and HasLineOfSight's, the
 /// latter now also keying off it (see SegmentCrossesResourceNodeCell) rather
@@ -18,7 +20,13 @@ using UnityEngine.Tilemaps;
 /// agrees with what a full path would actually allow — rather than kept
 /// incrementally in sync: node counts are modest, so rebuilding is cheap
 /// even at HasLineOfSight's per-frame call rate during an aggro chase, and
-/// this avoids invalidation bugs. The deep-water part is cached instead (see
+/// this avoids invalidation bugs. "Fresh" means once per frame, shared by
+/// every caller asking for the same set that frame (see blockedCellCache) —
+/// still never stale across a frame boundary, so the invalidation-proof
+/// property holds, but a storm's worth of chasing movers no longer each pay
+/// for their own scan. The set handed back is consequently SHARED and must be
+/// treated as read-only; FindPath copies it before applying its own
+/// per-call mutations. The deep-water part is cached outright (see
 /// deepWaterCells) since, unlike ResourceNode positions, it never changes at
 /// runtime.
 ///
@@ -43,6 +51,26 @@ using UnityEngine.Tilemaps;
 /// Turtles pass this true (they're small enough to fit that genuine
 /// diagonal gap) for both FindPath and HasLineOfSight, so the two always
 /// agree on what a turtle can and can't squeeze through.
+///
+/// On top of that whole-cell model, HasLineOfSight takes a moverRadius (world
+/// units, supplied by each mover from its own collider — see
+/// TurtleAgent.MoverLineOfSightRadius; never a single number hardcoded here,
+/// since a crab isn't a turtle). The center-line walk alone answers "does the
+/// segment ENTER a blocked cell", which a line running flush along a blocked
+/// cell's edge passes cleanly — and then the mover's actual body, which has
+/// width, overhangs into that cell and grinds along the obstacle. With a
+/// radius the walk additionally asks "does the segment come within moverRadius
+/// of a blocked cell's rectangle" (SegmentViolatesClearance, a true
+/// segment-to-AABB distance test against the cells neighboring the walk), so
+/// the answer accounts for the body rather than a zero-width ray. moverRadius
+/// 0 skips that phase entirely and reproduces the pure center-line behavior
+/// exactly, so a caller that hasn't opted in is unaffected. The one deliberate
+/// exemption: when allowDiagonalSqueeze is true, the two flanking cells of a
+/// corner the center line legitimately crosses are exempt from the clearance
+/// test — that corner IS the physical gap the flag exists to license, and
+/// clearance would otherwise quietly close it back up. Nowhere else. Since the
+/// two flanks of any one corner are always diagonal to each other (see above),
+/// this can never exempt a wall of cardinally-adjacent obstacles.
 /// </summary>
 public class PathfindingManager : MonoBehaviour
 {
@@ -61,6 +89,53 @@ public class PathfindingManager : MonoBehaviour
     // of rescanned every FindPath call — invalidated only if the island
     // regenerates.
     private HashSet<Vector3Int> deepWaterCells;
+
+    // Frame-scoped obstacle cache. The blocked set is still rebuilt fresh
+    // rather than kept incrementally in sync (see the class doc comment — that
+    // is what makes invalidation bugs impossible), just no longer rebuilt
+    // several times within one frame: during a storm every chasing mover asks
+    // for the same set with the same key on the same frame, and the clearance
+    // phase queries it more than the old center-line-only check did. Cleared
+    // implicitly by the frame stamp, so it can never outlive a frame boundary.
+    // Play mode only — the gizmo path deliberately keeps rebuilding, so
+    // dragging obstacleInflationRadius in the Inspector redraws immediately.
+    private readonly Dictionary<(float Inflation, bool IncludeCoral), HashSet<Vector3Int>> blockedCellCache =
+        new Dictionary<(float, bool), HashSet<Vector3Int>>();
+    private int blockedCellCacheFrame = -1;
+
+    /// <summary>
+    /// Completed routes, keyed by everything that can change the answer. Unlike
+    /// the blocked-cell cache above this survives across frames, because the
+    /// grid it searches is static between map changes — the same turtle asking
+    /// again after delivering, or a second turtle setting off from the cell a
+    /// first one just left, is the common case and it re-derives an identical
+    /// path. Entries are handed out as COPIES (see FindPath): callers keep the
+    /// list they're given and edit it (TurtleAgent trims and stitches legs
+    /// together), which would otherwise corrupt the cached route for everyone.
+    /// </summary>
+    private readonly Dictionary<(Vector3Int Start, Vector3Int Goal, bool AvoidDeepWater, bool DiagonalSqueeze, float ExtraInflation, bool AvoidCoral), List<Vector3>> pathCache =
+        new Dictionary<(Vector3Int, Vector3Int, bool, bool, float, bool), List<Vector3>>();
+
+    /// <summary>What the obstacle set looked like when pathCache was last known good — see RefreshPathCacheValidity.</summary>
+    private int pathCacheSignature = int.MinValue;
+
+    // Reused by the line-of-sight walk instead of allocating per call: it runs
+    // per-frame per chasing mover. Safe as static state because the walk is
+    // never re-entrant — SegmentCrossesResourceNodeCell and
+    // SegmentCrossesDeepWater call it one after the other, never nested, and
+    // Unity gameplay code is single-threaded.
+    private static readonly List<Vector3Int> visitedCells = new List<Vector3Int>();
+    private static readonly HashSet<Vector3Int> cornerExemptCells = new HashSet<Vector3Int>();
+    private static readonly HashSet<Vector3Int> clearanceCheckedCells = new HashSet<Vector3Int>();
+
+    // One warning per session (per domain reload) — see WarnIfMoverRadiusTooBigForWaypoints.
+    private static bool warnedOversizedMoverRadius;
+
+    /// <summary>True if the completed-route cache should be consulted at all. Exists to be switched off, so the cost of pathfinding with and without it can be compared in a profiler without editing code.</summary>
+    public bool CachePaths { get; set; } = true;
+
+    /// <summary>Most routes held at once. Reached in practice only by movers setting off from a great many distinct cells; the whole cache is dropped rather than evicted one entry at a time, since rebuilding it costs one search per route that's actually asked for again.</summary>
+    private const int MaxCachedPaths = 512;
 
     private void Awake()
     {
@@ -89,7 +164,31 @@ public class PathfindingManager : MonoBehaviour
         if (Instance == this) Instance = null;
     }
 
-    private void InvalidateDeepWaterCache() => deepWaterCells = null;
+    private void InvalidateDeepWaterCache()
+    {
+        deepWaterCells = null;
+        // A new map invalidates every route on the old one, and unlike the
+        // obstacle signature below this is a change the signature can't see:
+        // regeneration can easily leave the node and reef counts identical.
+        pathCache.Clear();
+    }
+
+    /// <summary>
+    /// Drops every cached route if the obstacle set has changed since they were
+    /// found. Keyed on how many nodes and reefs exist rather than on where they
+    /// are, which is exact here because neither ever moves — a node can only
+    /// enter or leave the registry, and either changes the count. Island
+    /// regeneration is the one case this can't see, and InvalidateDeepWaterCache
+    /// covers that directly.
+    /// </summary>
+    private void RefreshPathCacheValidity()
+    {
+        int signature = ResourceNode.AllNodes.Count * 397 ^ CoralReef.AllReefs.Count;
+        if (signature == pathCacheSignature) return;
+
+        pathCacheSignature = signature;
+        pathCache.Clear();
+    }
 
     /// <summary>Highlights, for every registered ResourceNode, exactly the cells BuildBlockedCells would mark blocked at the current obstacleInflationRadius — a node's own cell in red, any neighbor pulled in purely by the inflation in yellow — so raising the radius in the Inspector shows its effect live rather than requiring a Play-mode path trace to confirm.</summary>
     private void OnDrawGizmos()
@@ -106,15 +205,17 @@ public class PathfindingManager : MonoBehaviour
         }
 
         Vector3 cellSize = grid.cellSize;
-        foreach (Vector3Int cell in BuildBlockedCells(grid, obstacleInflationRadius))
+        // Drawn with coral included — the fullest obstacle set anything in the
+        // scene actually paths against (trash), so a reef shows up in the gizmos.
+        foreach (Vector3Int cell in BuildBlockedCells(grid, obstacleInflationRadius, includeCoral: true))
         {
             Gizmos.color = coreCells.Contains(cell) ? new Color(1f, 0.15f, 0.1f, 0.65f) : new Color(1f, 0.85f, 0f, 0.35f);
             Gizmos.DrawWireCube(grid.GetCellCenterWorld(cell), cellSize);
         }
     }
 
-    /// <summary>Finds a world-space waypoint path from start to goal avoiding nature, and — if avoidDeepWater is true — every deep-water cell too. Turtles always pass true (see TurtleAgent.BeginPathTo) so they can never path further out than the shallows; trash leaves this false since it must cross open water to reach shore. allowDiagonalSqueeze, if true, lets a diagonal move cut the corner between two obstacle-adjacent cells that are themselves diagonal from each other, rather than requiring at least one open — turtles pass this true (see the class doc comment for exactly what it does and doesn't permit: it can never open a path between two obstacles that are directly beside or above/below each other, only ones diagonal from each other, so it's safe for a small mover); trash leaves it false, keeping the strict corner-cutting guard. This never lets a path cut a corner across deep water regardless of the flag, since that's a hard depth limit, not a sizing issue. extraObstacleInflation adds on top of the shared obstacleInflationRadius for this call only (e.g. a bigger piece of trash passing its own size so its route avoids gaps only wide enough for something smaller) — most callers leave it 0. Returns null if unavailable/unreachable (callers should fall back to a direct route only when avoidDeepWater is false — see BeginPathTo), or an empty list if no intermediate waypoints are needed.</summary>
-    public List<Vector3> FindPath(Vector3 start, Vector3 goal, bool avoidDeepWater = false, bool allowDiagonalSqueeze = false, int extraObstacleInflation = 0)
+    /// <summary>Finds a world-space waypoint path from start to goal avoiding nature, and — if avoidDeepWater is true — every deep-water cell too. Turtles always pass true (see TurtleAgent.BeginPathTo) so they can never path further out than the shallows; trash leaves this false since it must cross open water to reach shore. allowDiagonalSqueeze, if true, lets a diagonal move cut the corner between two obstacle-adjacent cells that are themselves diagonal from each other, rather than requiring at least one open — turtles pass this true (see the class doc comment for exactly what it does and doesn't permit: it can never open a path between two obstacles that are directly beside or above/below each other, only ones diagonal from each other, so it's safe for a small mover); trash leaves it false, keeping the strict corner-cutting guard. This never lets a path cut a corner across deep water regardless of the flag, since that's a hard depth limit, not a sizing issue. extraObstacleInflation adds on top of the shared obstacleInflationRadius for this call only (e.g. a bigger piece of trash passing its own size so its route avoids gaps only wide enough for something smaller) — most callers leave it 0. It's a float on the same fractional scale as obstacleInflationRadius (~1.0 reaches the orthogonal neighbors, ~1.41 the diagonals), so whole-number callers still read naturally while a caller can also ask for less than a full ring. avoidCoral, on by default, treats a Coral Reef as an obstacle like any resource node; turtles pass false (see CoralReef — the reef is a wall for trash only, and they swim straight through it) while trash takes the default. Returns null if unavailable/unreachable (callers should fall back to a direct route only when avoidDeepWater is false — see BeginPathTo), or an empty list if no intermediate waypoints are needed.</summary>
+    public List<Vector3> FindPath(Vector3 start, Vector3 goal, bool avoidDeepWater = false, bool allowDiagonalSqueeze = false, float extraObstacleInflation = 0f, bool avoidCoral = true)
     {
         Tilemap grid = islandGenerator != null ? islandGenerator.WaterTilemap : null;
         if (grid == null) return null;
@@ -122,9 +223,30 @@ public class PathfindingManager : MonoBehaviour
         Vector3Int startCell = grid.WorldToCell(start);
         Vector3Int goalCell = grid.WorldToCell(goal);
 
-        HashSet<Vector3Int> blocked = BuildBlockedCells(grid, obstacleInflationRadius + Mathf.Max(0, extraObstacleInflation));
+        float inflation = obstacleInflationRadius + Mathf.Max(0f, extraObstacleInflation);
+        var cacheKey = (startCell, goalCell, avoidDeepWater, allowDiagonalSqueeze, inflation, avoidCoral);
+
+        if (CachePaths)
+        {
+            RefreshPathCacheValidity();
+            if (pathCache.TryGetValue(cacheKey, out List<Vector3> cached))
+            {
+                // A cached null means "searched, unreachable" — worth keeping,
+                // since a failed search is the most expensive kind (it expands
+                // everything it can reach before giving up) and a mover with
+                // nowhere to go asks again and again.
+                return cached != null ? new List<Vector3>(cached) : null;
+            }
+        }
+
+        // Used in place, NOT copied: BuildBlockedCells hands back a set shared
+        // with every other caller on this frame, and the exemptions below now
+        // go to the search as cells rather than being applied by mutating a
+        // private copy. Deep water likewise goes across as its own set instead
+        // of being unioned in, which used to mean copying a four-figure number
+        // of cells on every single request.
+        HashSet<Vector3Int> blocked = BuildBlockedCells(grid, inflation, avoidCoral);
         HashSet<Vector3Int> deepWater = avoidDeepWater ? GetDeepWaterCells(grid) : null;
-        if (deepWater != null) blocked.UnionWith(deepWater);
 
         // The destination and starting cell are always reachable regardless of
         // what occupies them — a mover needs to path onto a resource/building's
@@ -134,20 +256,35 @@ public class PathfindingManager : MonoBehaviour
         // goal cell stays blocked when avoidDeepWater is set, or this exemption
         // would defeat the whole point — a mover that must avoid deep water can
         // never treat a deep-water destination as reachable.
-        blocked.Remove(startCell);
-        if (deepWater == null || !deepWater.Contains(goalCell)) blocked.Remove(goalCell);
+        Vector3Int? goalExemption = deepWater == null || !deepWater.Contains(goalCell) ? goalCell : (Vector3Int?)null;
 
-        List<Vector3Int> cellPath = AStarPathfinder.FindPathCells(startCell, goalCell, grid.cellBounds, blocked, allowDiagonalSqueeze, deepWater);
-        if (cellPath == null) return null;
-        if (cellPath.Count <= 1) return new List<Vector3>();
+        List<Vector3Int> cellPath = AStarPathfinder.FindPathCells(
+            startCell, goalCell, grid.cellBounds, blocked, allowDiagonalSqueeze, deepWater, startCell, goalExemption);
 
-        List<Vector3> waypoints = new List<Vector3>(cellPath.Count - 1);
-        for (int i = 1; i < cellPath.Count; i++)
+        List<Vector3> waypoints = null;
+        if (cellPath != null)
         {
-            waypoints.Add(grid.GetCellCenterWorld(cellPath[i]));
+            waypoints = new List<Vector3>(Mathf.Max(0, cellPath.Count - 1));
+            for (int i = 1; i < cellPath.Count; i++)
+            {
+                waypoints.Add(grid.GetCellCenterWorld(cellPath[i]));
+            }
         }
 
-        return waypoints;
+        if (CachePaths) StorePath(cacheKey, waypoints);
+
+        // Copied on the way out for the same reason cached hits are: callers
+        // trim and stitch what they're handed (see TurtleAgent.BeginPathTo and
+        // FindPathOutOfDeepWaterIfNeeded), and the cache is holding this list.
+        return waypoints != null ? new List<Vector3>(waypoints) : null;
+    }
+
+    /// <summary>Files a completed route under key. The whole cache is dropped on overflow rather than evicting a single entry — there's no access ordering kept to evict by, and the routes that matter are re-found the next time they're asked for.</summary>
+    private void StorePath((Vector3Int, Vector3Int, bool, bool, float, bool) key, List<Vector3> waypoints)
+    {
+        if (pathCache.Count >= MaxCachedPaths) pathCache.Clear();
+
+        pathCache[key] = waypoints;
     }
 
     /// <summary>
@@ -176,41 +313,83 @@ public class PathfindingManager : MonoBehaviour
     /// end inside the destination's own cell and self-block. allowDiagonalSqueeze
     /// mirrors FindPath's own parameter of the same name and meaning — see its
     /// tooltip — but only for the resource-obstacle check; deep water always
-    /// keeps the strict corner guard regardless, same as FindPath.
+    /// keeps the strict corner guard regardless, same as FindPath. avoidCoral
+    /// likewise mirrors FindPath's parameter, so a mover's shortcut and its
+    /// full path agree about coral too. moverRadius (world units, 0 = the old
+    /// zero-width line) is how wide the asking mover physically is, and makes
+    /// the obstacle check reject a line that merely runs FLUSH past a blocked
+    /// cell rather than only one that enters it — see the class doc comment for
+    /// the geometry and for the one case it deliberately still allows (a
+    /// diagonal squeeze under allowDiagonalSqueeze). Each mover passes its own
+    /// collider-derived value; nothing here assumes a size.
     /// </summary>
-    public bool HasLineOfSight(Vector3 from, Vector3 to, Transform ignoreTarget = null, int extraObstacleInflation = 0, bool allowDiagonalSqueeze = false)
+    public bool HasLineOfSight(Vector3 from, Vector3 to, Transform ignoreTarget = null, float extraObstacleInflation = 0f, bool allowDiagonalSqueeze = false, bool avoidCoral = true, float moverRadius = 0f)
     {
         Vector2 origin = from;
         Vector2 target = to;
         if (Vector2.Distance(origin, target) < 0.0001f) return true;
 
-        if (SegmentCrossesResourceNodeCell(origin, target, ignoreTarget, extraObstacleInflation, allowDiagonalSqueeze)) return false;
+        if (moverRadius > 0f) WarnIfMoverRadiusTooBigForWaypoints(moverRadius);
+
+        if (SegmentCrossesResourceNodeCell(origin, target, ignoreTarget, extraObstacleInflation, allowDiagonalSqueeze, avoidCoral, moverRadius)) return false;
 
         return !SegmentCrossesDeepWater(origin, target);
     }
 
+    /// <summary>
+    /// Warns once (per domain reload) if a mover asks for line of sight with a
+    /// radius bigger than half a grid cell. FindPath hands back cell CENTERS as
+    /// waypoints, so a mover only reliably fits the routes it's given while its
+    /// radius stays inside half a cell — past that it can clip an obstacle
+    /// while faithfully following a path that the grid considers clear, which
+    /// looks like a pathfinding bug and isn't one. Deliberately not clamped:
+    /// silently shrinking the radius would hide exactly the setup mistake this
+    /// is meant to surface, so a future bigger creature fails loudly here
+    /// instead of clipping mysteriously in play. The fix for such a mover is
+    /// extraObstacleInflation on BOTH FindPath and HasLineOfSight (widening the
+    /// obstacles themselves, which moves the waypoints too), with moverRadius
+    /// left to handle only the sub-cell flush-alongside case.
+    /// </summary>
+    private void WarnIfMoverRadiusTooBigForWaypoints(float moverRadius)
+    {
+        if (warnedOversizedMoverRadius) return;
+
+        Tilemap grid = islandGenerator != null ? islandGenerator.WaterTilemap : null;
+        if (grid == null) return;
+
+        float halfCell = Mathf.Min(grid.cellSize.x, grid.cellSize.y) * 0.5f;
+        if (moverRadius <= halfCell) return;
+
+        warnedOversizedMoverRadius = true;
+        Debug.LogWarning($"PathfindingManager: a mover passed moverRadius {moverRadius:0.###} to HasLineOfSight, which is larger than half a grid cell ({halfCell:0.###}). FindPath's waypoints are cell centers, so a mover this wide cannot reliably follow the paths it is given — give it extraObstacleInflation on both FindPath and HasLineOfSight instead of relying on the line-of-sight radius alone. Shown once per play session.", this);
+    }
+
     /// <summary>True if any grid cell the origin→target segment actually passes through (per SegmentCrossesBlockedCell — every cell it touches, not a handful of sampled points) currently has a ResourceNode in it (per BuildBlockedCells — the whole cell, inflated the same as FindPath's obstacleInflationRadius plus extraObstacleInflation on top, not just wherever that node's own collider happens to sit). extraObstacleInflation widens the effective footprint to account for the mover's own width (e.g. a turtle's aggro-chase shortcut), so a gap too narrow for the mover's actual body correctly still blocks line of sight, matching FindPath's own extraObstacleInflation parameter for the same concern. ignoreTarget optionally exempts one specific node's own cell (see HasLineOfSight).</summary>
-    private bool SegmentCrossesResourceNodeCell(Vector2 origin, Vector2 target, Transform ignoreTarget, int extraObstacleInflation, bool allowDiagonalSqueeze)
+    private bool SegmentCrossesResourceNodeCell(Vector2 origin, Vector2 target, Transform ignoreTarget, float extraObstacleInflation, bool allowDiagonalSqueeze, bool avoidCoral, float moverRadius)
     {
         Tilemap grid = islandGenerator != null ? islandGenerator.WaterTilemap : null;
         if (grid == null) return false;
 
-        HashSet<Vector3Int> nodeCells = BuildBlockedCells(grid, obstacleInflationRadius + Mathf.Max(0, extraObstacleInflation));
+        HashSet<Vector3Int> nodeCells = BuildBlockedCells(grid, obstacleInflationRadius + Mathf.Max(0f, extraObstacleInflation), avoidCoral);
         Vector3Int? ignoreCell = ignoreTarget != null ? grid.WorldToCell(ignoreTarget.position) : (Vector3Int?)null;
 
+        // The clearance phase asks this same delegate rather than the raw set,
+        // so the ignoreTarget exemption covers it for free — a mover closing on
+        // a node it's harvesting isn't blocked by that node's own cell whether
+        // the line enters it or merely runs near it. Nothing to duplicate.
         bool IsBlocked(Vector3Int cell) => nodeCells.Contains(cell) && (!ignoreCell.HasValue || cell != ignoreCell.Value);
 
-        return SegmentCrossesBlockedCell(grid, origin, target, IsBlocked, allowDiagonalSqueeze);
+        return SegmentCrossesBlockedCell(grid, origin, target, IsBlocked, allowDiagonalSqueeze, moverRadius);
     }
 
-    /// <summary>True if any grid cell the origin→target segment actually passes through is deep water, so a straight-line shortcut can never cut across a stretch of it lying between two otherwise-valid endpoints. Always uses the strict corner guard (allowDiagonalSqueeze: false) regardless of what the resource-obstacle check was allowed — deep water is a hard depth limit, not a sizing issue, same as FindPath's own alwaysCornerBlockedCells treatment of it.</summary>
+    /// <summary>True if any grid cell the origin→target segment actually passes through is deep water, so a straight-line shortcut can never cut across a stretch of it lying between two otherwise-valid endpoints. Always uses the strict corner guard (allowDiagonalSqueeze: false) regardless of what the resource-obstacle check was allowed — deep water is a hard depth limit, not a sizing issue, same as FindPath's own alwaysCornerBlockedCells treatment of it. Passes moverRadius 0 for the same reason: how wide a mover is has no bearing on how deep the water is, and a turtle skimming the edge of an open-ocean cell is fine as long as its center line stays out — so this stays the pure center-line check it has always been.</summary>
     private bool SegmentCrossesDeepWater(Vector2 origin, Vector2 target)
     {
         Tilemap grid = islandGenerator != null ? islandGenerator.WaterTilemap : null;
         if (grid == null) return false;
 
         HashSet<Vector3Int> deepWater = GetDeepWaterCells(grid);
-        return SegmentCrossesBlockedCell(grid, origin, target, deepWater.Contains, allowDiagonalSqueeze: false);
+        return SegmentCrossesBlockedCell(grid, origin, target, deepWater.Contains, allowDiagonalSqueeze: false, moverRadius: 0f);
     }
 
     /// <summary>
@@ -234,13 +413,39 @@ public class PathfindingManager : MonoBehaviour
     /// caller whose start happens to sit in a "blocked" cell still gets a
     /// meaningful answer rather than an immediate false positive/negative
     /// depending on how the walk began.
+    ///
+    /// With a non-zero moverRadius a second phase runs after the walk
+    /// (SegmentViolatesClearance), rejecting segments that pass within
+    /// moverRadius of a blocked cell without ever entering it. It runs after
+    /// rather than during the walk on purpose: the diagonal-squeeze exemptions
+    /// are discovered by the walk, and a violation can be spotted a step or two
+    /// BEFORE the corner tie that exempts it, so checking inline would reject
+    /// legitimate squeezes depending purely on which end of the segment the
+    /// mover happened to be. At moverRadius 0 the phase is skipped outright and
+    /// this method behaves exactly as it always has.
     /// </summary>
-    private static bool SegmentCrossesBlockedCell(Tilemap grid, Vector2 origin, Vector2 target, Func<Vector3Int, bool> isBlocked, bool allowDiagonalSqueeze)
+    private static bool SegmentCrossesBlockedCell(Tilemap grid, Vector2 origin, Vector2 target, Func<Vector3Int, bool> isBlocked, bool allowDiagonalSqueeze, float moverRadius)
+    {
+        bool useClearance = moverRadius > 0f;
+        if (useClearance)
+        {
+            visitedCells.Clear();
+            cornerExemptCells.Clear();
+        }
+
+        if (TraverseCenterLine(grid, origin, target, isBlocked, allowDiagonalSqueeze, useClearance)) return true;
+
+        return useClearance && SegmentViolatesClearance(grid, origin, target, isBlocked, moverRadius);
+    }
+
+    /// <summary>The center-line walk itself — see SegmentCrossesBlockedCell. True if the segment enters a blocked cell (or, under the strict corner guard, tries to thread a blocked corner). recordForClearance additionally logs every visited cell and every squeeze-exempt corner flank for the clearance phase to consult; it changes nothing about the answer.</summary>
+    private static bool TraverseCenterLine(Tilemap grid, Vector2 origin, Vector2 target, Func<Vector3Int, bool> isBlocked, bool allowDiagonalSqueeze, bool recordForClearance)
     {
         Vector3Int cell = grid.WorldToCell(origin);
         Vector3Int endCell = grid.WorldToCell(target);
 
         if (isBlocked(cell)) return true;
+        if (recordForClearance) visitedCells.Add(cell);
         if (cell == endCell) return false;
 
         Vector2 offset = target - origin;
@@ -272,11 +477,29 @@ public class PathfindingManager : MonoBehaviour
 
             if (isCornerTie)
             {
+                Vector3Int flankA = new Vector3Int(cell.x + stepX, cell.y, cell.z);
+                Vector3Int flankB = new Vector3Int(cell.x, cell.y + stepY, cell.z);
+
                 if (!allowDiagonalSqueeze)
                 {
-                    Vector3Int flankA = new Vector3Int(cell.x + stepX, cell.y, cell.z);
-                    Vector3Int flankB = new Vector3Int(cell.x, cell.y + stepY, cell.z);
                     if (isBlocked(flankA) || isBlocked(flankB)) return true;
+                }
+                else if (recordForClearance)
+                {
+                    // The single place body width is deliberately ignored: this
+                    // corner is the diagonal gap allowDiagonalSqueeze exists to
+                    // license, and a mover with any real radius is necessarily
+                    // within that radius of both flanks while threading it — so
+                    // applying clearance here would close every squeeze the
+                    // flag is supposed to keep open, and silently disagree with
+                    // FindPath, which still allows the same corner. Exempting
+                    // by cell (not by "skip this step") keeps it narrow: only
+                    // these two cells, which are always diagonal to each other,
+                    // are ever spared, so it can't open a wall of adjacent
+                    // obstacles. Any other blocked cell near the segment,
+                    // including at this same step, still blocks normally.
+                    cornerExemptCells.Add(flankA);
+                    cornerExemptCells.Add(flankB);
                 }
 
                 cell = new Vector3Int(cell.x + stepX, cell.y + stepY, cell.z);
@@ -295,18 +518,144 @@ public class PathfindingManager : MonoBehaviour
             }
 
             if (isBlocked(cell)) return true;
+            if (recordForClearance) visitedCells.Add(cell);
             if (cell == endCell) return false;
         }
 
         return false;
     }
 
-    private HashSet<Vector3Int> BuildBlockedCells(Tilemap grid, float inflationRadius)
+    /// <summary>
+    /// The body-width half of the check: true if the segment passes within
+    /// moverRadius of any blocked cell's rectangle, even one its center line
+    /// never enters. Sweeps a square window of ceil(moverRadius / cellSize)
+    /// cells around every cell the walk visited — for the sub-cell radii real
+    /// movers have, that's just the 8 neighbors — and measures the true
+    /// distance from the segment to each blocked neighbor's world-space AABB.
+    /// Windows of consecutive visited cells overlap heavily, so cells are
+    /// deduplicated through a reused set rather than re-measured. Corner flanks
+    /// the walk marked exempt (see TraverseCenterLine) are skipped, which is
+    /// what keeps a licensed diagonal squeeze open.
+    /// </summary>
+    private static bool SegmentViolatesClearance(Tilemap grid, Vector2 origin, Vector2 target, Func<Vector3Int, bool> isBlocked, float moverRadius)
+    {
+        Vector2 cellSize = new Vector2(Mathf.Max(grid.cellSize.x, 0.0001f), Mathf.Max(grid.cellSize.y, 0.0001f));
+        int window = Mathf.CeilToInt(moverRadius / Mathf.Min(cellSize.x, cellSize.y));
+        if (window <= 0) return false;
+
+        clearanceCheckedCells.Clear();
+
+        for (int i = 0; i < visitedCells.Count; i++)
+        {
+            Vector3Int visited = visitedCells[i];
+
+            for (int dx = -window; dx <= window; dx++)
+            {
+                for (int dy = -window; dy <= window; dy++)
+                {
+                    Vector3Int neighbor = new Vector3Int(visited.x + dx, visited.y + dy, visited.z);
+
+                    if (!clearanceCheckedCells.Add(neighbor)) continue;
+                    if (cornerExemptCells.Contains(neighbor)) continue;
+                    if (!isBlocked(neighbor)) continue;
+
+                    Rect rect = new Rect((Vector2)grid.CellToWorld(neighbor), cellSize);
+                    if (SegmentToRectDistance(origin, target, rect) < moverRadius - 0.0001f) return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Shortest distance from segment a→b to an axis-aligned rectangle: 0 if the two touch or overlap at all, otherwise the closest approach to its outline. Allocation-free (all struct math), since this runs a couple dozen times per line-of-sight check per chasing mover.</summary>
+    private static float SegmentToRectDistance(Vector2 a, Vector2 b, Rect rect)
+    {
+        // Catches both "an endpoint is inside" and "the whole segment is
+        // inside" — the latter touches no edge, so the edge sweep below would
+        // otherwise report a positive distance for a segment sitting squarely
+        // within the rectangle.
+        if (rect.Contains(a) || rect.Contains(b)) return 0f;
+
+        Vector2 bottomLeft = rect.min;
+        Vector2 topRight = rect.max;
+        Vector2 bottomRight = new Vector2(topRight.x, bottomLeft.y);
+        Vector2 topLeft = new Vector2(bottomLeft.x, topRight.y);
+
+        float distance = SegmentToSegmentDistance(a, b, bottomLeft, bottomRight);
+        distance = Mathf.Min(distance, SegmentToSegmentDistance(a, b, bottomRight, topRight));
+        distance = Mathf.Min(distance, SegmentToSegmentDistance(a, b, topRight, topLeft));
+        distance = Mathf.Min(distance, SegmentToSegmentDistance(a, b, topLeft, bottomLeft));
+        return distance;
+    }
+
+    /// <summary>Shortest distance between two segments in 2D: 0 if they cross, otherwise the smallest of the four endpoint-to-other-segment distances (the closest approach of two non-crossing segments is always at one of their endpoints).</summary>
+    private static float SegmentToSegmentDistance(Vector2 a, Vector2 b, Vector2 c, Vector2 d)
+    {
+        if (SegmentsProperlyIntersect(a, b, c, d)) return 0f;
+
+        float distance = PointToSegmentDistance(a, c, d);
+        distance = Mathf.Min(distance, PointToSegmentDistance(b, c, d));
+        distance = Mathf.Min(distance, PointToSegmentDistance(c, a, b));
+        distance = Mathf.Min(distance, PointToSegmentDistance(d, a, b));
+        return distance;
+    }
+
+    /// <summary>True if the two segments cross at a single interior point. Deliberately reports false for the collinear/touching-at-an-endpoint cases rather than special-casing them: those all have an endpoint lying on the other segment, so the endpoint sweep in SegmentToSegmentDistance already returns 0 for them.</summary>
+    private static bool SegmentsProperlyIntersect(Vector2 a, Vector2 b, Vector2 c, Vector2 d)
+    {
+        float d1 = Cross(d - c, a - c);
+        float d2 = Cross(d - c, b - c);
+        float d3 = Cross(b - a, c - a);
+        float d4 = Cross(b - a, d - a);
+
+        return ((d1 > 0f && d2 < 0f) || (d1 < 0f && d2 > 0f))
+            && ((d3 > 0f && d4 < 0f) || (d3 < 0f && d4 > 0f));
+    }
+
+    private static float Cross(Vector2 lhs, Vector2 rhs) => lhs.x * rhs.y - lhs.y * rhs.x;
+
+    private static float PointToSegmentDistance(Vector2 point, Vector2 a, Vector2 b)
+    {
+        Vector2 ab = b - a;
+        float lengthSquared = ab.sqrMagnitude;
+        float t = lengthSquared > 0.0000001f ? Mathf.Clamp01(Vector2.Dot(point - a, ab) / lengthSquared) : 0f;
+        return Vector2.Distance(point, a + t * ab);
+    }
+
+    /// <summary>Builds the obstacle cell set. includeCoral folds CoralReef.AllReefs in alongside the resource nodes, giving coral the same inflation and gap-closing treatment as a palm tree — callers that pass false (turtles, which physically pass through coral) see nature obstacles only. The returned set is SHARED with every other caller using the same key on the same frame (see blockedCellCache) — treat it as read-only and copy it if you need to mutate, as FindPath does.</summary>
+    private HashSet<Vector3Int> BuildBlockedCells(Tilemap grid, float inflationRadius, bool includeCoral)
+    {
+        if (!Application.isPlaying) return BuildBlockedCellsUncached(grid, inflationRadius, includeCoral);
+
+        if (blockedCellCacheFrame != Time.frameCount)
+        {
+            blockedCellCacheFrame = Time.frameCount;
+            blockedCellCache.Clear();
+        }
+
+        (float, bool) key = (inflationRadius, includeCoral);
+        if (blockedCellCache.TryGetValue(key, out HashSet<Vector3Int> cached)) return cached;
+
+        HashSet<Vector3Int> built = BuildBlockedCellsUncached(grid, inflationRadius, includeCoral);
+        blockedCellCache[key] = built;
+        return built;
+    }
+
+    private HashSet<Vector3Int> BuildBlockedCellsUncached(Tilemap grid, float inflationRadius, bool includeCoral)
     {
         HashSet<Vector3Int> nodeCells = new HashSet<Vector3Int>();
         foreach (ResourceNode node in ResourceNode.AllNodes)
         {
             if (node != null) nodeCells.Add(grid.WorldToCell(node.transform.position));
+        }
+
+        if (includeCoral)
+        {
+            foreach (CoralReef reef in CoralReef.AllReefs)
+            {
+                if (reef != null) nodeCells.Add(grid.WorldToCell(reef.transform.position));
+            }
         }
 
         HashSet<Vector3Int> blocked = new HashSet<Vector3Int>(nodeCells);
@@ -376,17 +725,25 @@ public class PathfindingManager : MonoBehaviour
         return sand.HasTile(sand.WorldToCell(worldPosition));
     }
 
-    /// <summary>Finds the nearest non-deep-water cell center to worldPosition — used to give a turtle chasing a target that's drifted into deep water (e.g. storm trash) a concrete shoreline point to swim to and hold at, instead of freezing wherever it happened to be. Searches outward ring by ring (Chebyshev distance) since the island's exact shape isn't known analytically. Falls back to worldPosition itself if the whole map is deep water or no grid exists — shouldn't happen with a real generated island.</summary>
+    /// <summary>Finds the nearest non-deep-water cell center to worldPosition — used to give a turtle chasing a target that's drifted into deep water (e.g. storm trash) a concrete shoreline point to swim to and hold at, instead of freezing wherever it happened to be. Searches outward ring by ring (Chebyshev distance) since the island's exact shape isn't known analytically, preferring cells that aren't obstacles either so the turtle isn't sent to hold station inside a palm tree or a reef; a ring offering only blocked-but-shallow cells is remembered as a fallback and used only if no open cell turns up anywhere, since standing in an obstacle still beats standing in the ocean. Falls back to worldPosition itself if the whole map is deep water or no grid exists — shouldn't happen with a real generated island.</summary>
     public Vector3 NearestNonDeepWaterPoint(Vector3 worldPosition)
     {
         Tilemap grid = islandGenerator != null ? islandGenerator.WaterTilemap : null;
         if (grid == null) return worldPosition;
 
-        Vector3Int center = grid.WorldToCell(worldPosition);
-        if (!IsDeepWater(worldPosition)) return grid.GetCellCenterWorld(center);
-
         HashSet<Vector3Int> deepWater = GetDeepWaterCells(grid);
+        HashSet<Vector3Int> blocked = BuildBlockedCells(grid, obstacleInflationRadius, includeCoral: true);
+
+        // Still IsDeepWater rather than the cell set for the mover's own cell:
+        // the set only covers cellBounds, and a position that has drifted
+        // outside it must not read as "shallow, stay put".
+        Vector3Int center = grid.WorldToCell(worldPosition);
+        if (!IsDeepWater(worldPosition) && !blocked.Contains(center)) return grid.GetCellCenterWorld(center);
+
         int maxRadius = Mathf.Max(grid.cellBounds.size.x, grid.cellBounds.size.y);
+        Vector3Int blockedFallback = default;
+        float blockedFallbackSqrDistance = float.MaxValue;
+        bool hasBlockedFallback = false;
 
         for (int radius = 1; radius <= maxRadius; radius++)
         {
@@ -406,6 +763,19 @@ public class PathfindingManager : MonoBehaviour
 
                     Vector3 cellCenter = grid.GetCellCenterWorld(cell);
                     float sqrDistance = ((Vector2)cellCenter - (Vector2)worldPosition).sqrMagnitude;
+
+                    if (blocked.Contains(cell))
+                    {
+                        if (sqrDistance < blockedFallbackSqrDistance)
+                        {
+                            blockedFallbackSqrDistance = sqrDistance;
+                            blockedFallback = cell;
+                            hasBlockedFallback = true;
+                        }
+
+                        continue;
+                    }
+
                     if (sqrDistance < bestSqrDistance)
                     {
                         bestSqrDistance = sqrDistance;
@@ -417,6 +787,8 @@ public class PathfindingManager : MonoBehaviour
 
             if (found) return grid.GetCellCenterWorld(best);
         }
+
+        if (hasBlockedFallback) return grid.GetCellCenterWorld(blockedFallback);
 
         return worldPosition;
     }

@@ -9,9 +9,22 @@ using UnityEngine.UI;
 /// Orchestrates the end-of-storm upgrade choice: draws 2 distinct cards from
 /// Upgrade Pool (skipping non-stackable cards already picked this run),
 /// shows the choice UI, and invokes a callback once the player selects one.
+/// The draw is weighted, not uniform: a card with UpgradeCardDefinition's
+/// Base Stat Upgrade ticked is offered Base Stat Draw Weight as often as any
+/// other (0.5, so half as often), which keeps the picks the player actually
+/// remembers — unlocks, new behaviors — from being crowded out by a pool that's
+/// mostly small numeric bumps. See DrawWeightedIndex.
 /// Other systems (BuildModeController, TurtleSelectionController,
 /// CameraController) poll the static IsActive flag to stand down while this
 /// is up, the same way they already stand down for BuildModeController.IsActive.
+///
+/// Every card offered here is a helpful one. The parallel "hazard" pool this
+/// used to also draw from mid-run (a forced harmful pick every N storms) is
+/// gone — harmful effects are now opt-in run modifiers the player chooses on
+/// the menu before starting, in exchange for a score multiplier. See
+/// GameModifierDefinition/GameModifierManager; those modifiers reuse the same
+/// UpgradeCardDefinition prefabs as their effects, just applied once at run
+/// start rather than drawn from here.
 ///
 /// The backdrop doubles as storm visual feedback: DayStormCycle calls
 /// BeginStormFadeIn the instant a storm starts, well before the actual card
@@ -31,14 +44,8 @@ public class UpgradeSelectionUI : MonoBehaviour
 
     [Tooltip("The full authored pool of upgrade cards to draw from. Add more here to expand the pool without touching this script.")]
     [SerializeField] private UpgradeCardDefinition[] upgradePool;
-
-    [Tooltip("Parallel pool drawn from only via ShowHazardChoice, when a GarbagePatch has just been depleted — represents the cost of moving on to a new island rather than a helpful pick.")]
-    [SerializeField] private UpgradeCardDefinition[] hazardUpgradePool;
-
-    [Tooltip("How many times more likely a non-stackable (one-time unlock) hazard card is to be drawn compared to a stackable one, e.g. 3 = three times as likely. 1 = no bias, same uniform draw the helpful pool always uses. Only affects ShowHazardChoice.")]
-    [SerializeField, Min(1f)] private float hazardNonStackableWeight = 3f;
-    [Tooltip("How many cards ShowHazardChoice draws, independent of how many Card Slots are wired up — the helpful pool (Show) always uses every available slot (see Card Slots below), but the hazard pool stays capped at this count regardless of how many slots exist.")]
-    [SerializeField, Min(1)] private int hazardCardCount = 2;
+    [Tooltip("How likely a card with Base Stat Upgrade ticked is to be drawn, relative to a card without it. 0.5 = half as likely, 1 = no difference, 0 = never drawn while any other card is eligible.")]
+    [SerializeField, Range(0f, 1f)] private float baseStatDrawWeight = 0.5f;
 
     [Header("UI References")]
     [Tooltip("Root object for the whole choice UI (backdrop + cards), toggled active/inactive by BeginStormFadeIn/Select.")]
@@ -48,7 +55,7 @@ public class UpgradeSelectionUI : MonoBehaviour
     [SerializeField] private TMP_Text nameText;
     [Tooltip("Bottom-center text shown while hovering a card's icon.")]
     [SerializeField] private TMP_Text descriptionText;
-    [Tooltip("The card view slots shown to the player. The helpful pool (Show) draws up to however many are wired here (2, 3, ...); the hazard pool (ShowHazardChoice) always stays capped at Hazard Card Count regardless.")]
+    [Tooltip("The card view slots shown to the player. Show draws up to however many are wired here (2, 3, ...).")]
     [SerializeField] private UpgradeCardView[] cardSlots;
 
     [Header("Storm Backdrop Fade")]
@@ -56,10 +63,8 @@ public class UpgradeSelectionUI : MonoBehaviour
     [SerializeField] private float backdropFadeDuration = 1f;
 
     [Header("Card Text Color")]
-    [Tooltip("Name/description text color while hovering a card drawn from the normal (helpful) pool.")]
+    [Tooltip("Name/description text color while hovering a card.")]
     [SerializeField] private Color goodTextColor = Color.white;
-    [Tooltip("Name/description text color while hovering a card drawn from the hazard pool, to visually flag it as a cost rather than a helpful pick.")]
-    [SerializeField] private Color hazardTextColor = Color.red;
 
     private readonly HashSet<UpgradeCardDefinition> pickedNonStackable = new HashSet<UpgradeCardDefinition>();
     private Action pendingOnComplete;
@@ -75,8 +80,30 @@ public class UpgradeSelectionUI : MonoBehaviour
             backdropTargetAlpha = backdrop.color.a;
             SetBackdropAlpha(0f);
         }
+        SetBackdropBlocking(false);
         HideName();
         HideDescription();
+    }
+
+    /// <summary>
+    /// Whether the backdrop swallows pointer clicks, which must be true ONLY
+    /// while the card choice is genuinely modal — never during the storm, when
+    /// the very same Image is on screen purely as night-time darkening.
+    ///
+    /// This is not cosmetic. TurtleSelectionController and BuildModeController
+    /// both ignore a click that lands on UI (so pressing a HUD button doesn't
+    /// also order a turtle or place a building), and they ask the EventSystem,
+    /// which answers for ANY graphic flagged Raycast Target — including a
+    /// full-screen decorative one. Left on through the night, this backdrop
+    /// covers the screen and silently eats every gameplay click from dusk until
+    /// the upgrade pick: turtles can't be selected, nothing can be ordered, and
+    /// there's no visible cause. Driven from code rather than left to the
+    /// Image's Inspector checkbox precisely because the flag has to be false at
+    /// one time and true at another, which no static authoring can express.
+    /// </summary>
+    private void SetBackdropBlocking(bool blocking)
+    {
+        if (backdrop != null) backdrop.raycastTarget = blocking;
     }
 
     /// <summary>Called by DayStormCycle the instant a storm begins. Fades the backdrop in immediately and hides the (not-yet-populated) card slots, so nothing but the darkening itself is visible until Show() actually reveals cards at the storm's end.</summary>
@@ -86,21 +113,23 @@ public class UpgradeSelectionUI : MonoBehaviour
         HideName();
         HideDescription();
         SetCardSlotsActive(false);
+        // Explicit even though nothing should have left it on: this is the call
+        // that puts a full-screen graphic over the game for the entire night,
+        // so it's the one place it matters most. See SetBackdropBlocking.
+        SetBackdropBlocking(false);
         StartBackdropFade(backdropTargetAlpha);
     }
 
+    /// <summary>Fades the storm backdrop back out without offering any cards — for a storm that ends with no upgrade pick at all (see DayStormCycle: the run's final storm skips the pick, since the win screen follows immediately and a card picked there could never be used). Without this the darkening BeginStormFadeIn applied would stay up through the cutscene and win screen, since Select is normally what clears it.</summary>
+    public void EndStormFadeOut() => StartBackdropFade(0f);
+
     /// <summary>Draws up to as many distinct eligible cards as Card Slots has room for from Upgrade Pool and shows the choice UI. Calls onComplete immediately if no cards are eligible.</summary>
-    public void Show(Action onComplete) => ShowFromPool(upgradePool, onComplete, 1f, isHazardPool: false);
-
-    /// <summary>Same as Show, but draws from Hazard Upgrade Pool instead — called only once a GarbagePatch has just been depleted, representing the cost of moving on to a new island. Non-stackable cards are favored in the draw by Hazard Non Stackable Weight, since a one-time unlock (a new trash type, a new mechanic) is more interesting to surface here than another stacking numeric bump. Always draws exactly Hazard Card Count cards (capped by however many are eligible), regardless of how many Card Slots exist for the helpful pool.</summary>
-    public void ShowHazardChoice(Action onComplete) => ShowFromPool(hazardUpgradePool, onComplete, hazardNonStackableWeight, isHazardPool: true);
-
-    private void ShowFromPool(UpgradeCardDefinition[] pool, Action onComplete, float nonStackableWeight, bool isHazardPool)
+    public void Show(Action onComplete)
     {
         List<UpgradeCardDefinition> eligible = new List<UpgradeCardDefinition>();
-        if (pool != null)
+        if (upgradePool != null)
         {
-            foreach (UpgradeCardDefinition card in pool)
+            foreach (UpgradeCardDefinition card in upgradePool)
             {
                 if (card == null) continue;
                 if (!card.Stackable && pickedNonStackable.Contains(card)) continue;
@@ -115,6 +144,11 @@ public class UpgradeSelectionUI : MonoBehaviour
                 {
                     continue;
                 }
+
+                // Same idea for branches whose parent is a plain upgrade rather
+                // than a building (see IRequiresUpgrade) — a Barnacle or Crab
+                // improvement shouldn't be offered before Barnacles/Crabs are.
+                if (card is IRequiresUpgrade requiresUpgrade && !requiresUpgrade.IsPrerequisiteMet) continue;
 
                 eligible.Add(card);
             }
@@ -131,18 +165,20 @@ public class UpgradeSelectionUI : MonoBehaviour
             return;
         }
 
-        int maxCards = isHazardPool ? hazardCardCount : cardSlots.Length;
-        int drawCount = Mathf.Min(maxCards, eligible.Count);
+        int drawCount = Mathf.Min(cardSlots.Length, eligible.Count);
         List<UpgradeCardDefinition> drawn = new List<UpgradeCardDefinition>();
         for (int i = 0; i < drawCount; i++)
         {
-            int index = PickWeightedIndex(eligible, nonStackableWeight);
+            int index = DrawWeightedIndex(eligible);
             drawn.Add(eligible[index]);
             eligible.RemoveAt(index);
         }
 
         pendingOnComplete = onComplete;
         IsActive = true;
+        // Now — and only now — the backdrop is a real modal shield: it keeps a
+        // click aimed between two cards from reaching the HUD behind it.
+        SetBackdropBlocking(true);
         if (root != null) root.SetActive(true);
         HideName();
         HideDescription();
@@ -152,38 +188,85 @@ public class UpgradeSelectionUI : MonoBehaviour
         {
             bool used = i < drawn.Count;
             cardSlots[i].gameObject.SetActive(used);
-            if (used) cardSlots[i].Bind(drawn[i], this, isHazardPool);
+            if (used) cardSlots[i].Bind(drawn[i], this);
         }
     }
 
-    /// <summary>Picks a random index from eligible, weighting non-stackable cards by nonStackableWeight relative to stackable ones (weight 1). nonStackableWeight of 1 collapses to a plain uniform pick.</summary>
-    private static int PickWeightedIndex(List<UpgradeCardDefinition> eligible, float nonStackableWeight)
+    /// <summary>
+    /// Picks one index out of the remaining eligible cards, weighted so that a
+    /// card with Base Stat Upgrade ticked comes up Base Stat Draw Weight as
+    /// often as an unticked one (0.5 = half as likely). Called once per slot,
+    /// with the drawn card removed in between, so the weighting applies to each
+    /// pick independently rather than only to the first.
+    ///
+    /// Falls back to a flat uniform pick if the total weight is zero — that
+    /// happens when the weight is set to 0 and EVERY eligible card is a base
+    /// stat upgrade, where "half as likely" has nothing left to be half of and
+    /// showing something beats showing an empty slot.
+    /// </summary>
+    private int DrawWeightedIndex(List<UpgradeCardDefinition> pool)
     {
-        if (nonStackableWeight <= 1f) return UnityEngine.Random.Range(0, eligible.Count);
+        float total = 0f;
+        foreach (UpgradeCardDefinition card in pool) total += DrawWeightOf(card);
 
-        float totalWeight = 0f;
-        foreach (UpgradeCardDefinition card in eligible)
+        if (total <= 0f) return UnityEngine.Random.Range(0, pool.Count);
+
+        float roll = UnityEngine.Random.value * total;
+        for (int i = 0; i < pool.Count; i++)
         {
-            totalWeight += card.Stackable ? 1f : nonStackableWeight;
+            roll -= DrawWeightOf(pool[i]);
+            if (roll <= 0f) return i;
         }
 
-        float roll = UnityEngine.Random.Range(0f, totalWeight);
-        float cumulative = 0f;
-        for (int i = 0; i < eligible.Count; i++)
-        {
-            cumulative += eligible[i].Stackable ? 1f : nonStackableWeight;
-            if (roll < cumulative) return i;
-        }
-
-        return eligible.Count - 1;
+        // Only reachable if floating-point drift leaves roll a hair above the
+        // accumulated weights; the last card is the one it was rolling into.
+        return pool.Count - 1;
     }
 
-    /// <summary>Called by a hovered UpgradeCardView to show its name, tinted Good Text Color or Hazard Text Color depending on which pool that card was drawn from. Mirrors ShowDescription exactly.</summary>
-    public void ShowName(string text, bool isHazard)
+    private float DrawWeightOf(UpgradeCardDefinition card)
+    {
+        return card != null && card.IsBaseStatUpgrade ? baseStatDrawWeight : 1f;
+    }
+
+    /// <summary>How many cards are actually on offer right now — 0 when no pick is up. Show decides this at runtime (it draws up to as many as there are slots, but no more than the eligible pool holds), so it can't be assumed from the authored slot count.</summary>
+    public int ShownCardCount
+    {
+        get
+        {
+            if (cardSlots == null) return 0;
+
+            int count = 0;
+            foreach (UpgradeCardView slot in cardSlots)
+            {
+                if (slot != null && slot.gameObject.activeInHierarchy) count++;
+            }
+
+            return count;
+        }
+    }
+
+    /// <summary>RectTransform of the index'th card currently on offer, or null if there aren't that many. Exists for the tutorial to point an arrow at every card it's telling the player to choose between — the slots are a private authored array, so this hands out only what a pointer needs rather than the slots themselves. Counts the SHOWN cards, not the raw slots, so index 0 is always a real card even if a slot in the middle of the array went unused.</summary>
+    public RectTransform GetShownCardRect(int index)
+    {
+        if (cardSlots == null || index < 0) return null;
+
+        int seen = 0;
+        foreach (UpgradeCardView slot in cardSlots)
+        {
+            if (slot == null || !slot.gameObject.activeInHierarchy) continue;
+            if (seen == index) return (RectTransform)slot.transform;
+            seen++;
+        }
+
+        return null;
+    }
+
+    /// <summary>Called by a hovered UpgradeCardView to show its name. Mirrors ShowDescription exactly.</summary>
+    public void ShowName(string text)
     {
         if (nameText == null) return;
         nameText.text = text;
-        nameText.color = isHazard ? hazardTextColor : goodTextColor;
+        nameText.color = goodTextColor;
         nameText.gameObject.SetActive(true);
     }
 
@@ -194,11 +277,11 @@ public class UpgradeSelectionUI : MonoBehaviour
     }
 
     /// <summary>Called by a hovered UpgradeCardView to show its description bottom-center, tinted the same way as ShowName.</summary>
-    public void ShowDescription(string text, bool isHazard)
+    public void ShowDescription(string text)
     {
         if (descriptionText == null) return;
         descriptionText.text = text;
-        descriptionText.color = isHazard ? hazardTextColor : goodTextColor;
+        descriptionText.color = goodTextColor;
         descriptionText.gameObject.SetActive(true);
     }
 
@@ -217,6 +300,11 @@ public class UpgradeSelectionUI : MonoBehaviour
         if (!card.Stackable) pickedNonStackable.Add(card);
 
         IsActive = false;
+        // Gameplay input resumes on this very line (see the summary above), so
+        // the shield has to come down with it — the backdrop is still visible
+        // for a moment while it fades, and must not eat the player's first
+        // click back.
+        SetBackdropBlocking(false);
         HideName();
         HideDescription();
         StartBackdropFade(0f);

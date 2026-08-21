@@ -160,7 +160,14 @@ public class TurtleNest : MonoBehaviour
         }
     }
 
+    /// <summary>The authored cooldown for type, stretched by UpgradeManager.FoodCooldownMultiplier (the Picky Eaters run modifier, 1 when it isn't taken). Read fresh on every re-arm rather than cached at storm start, so it stays right whatever order managers happen to initialize in.</summary>
     private float GetCooldownSeconds(ResourceManager.ResourceType type)
+    {
+        float multiplier = UpgradeManager.Instance != null ? UpgradeManager.Instance.FoodCooldownMultiplier : 1f;
+        return Mathf.Max(0.01f, GetAuthoredCooldownSeconds(type) * multiplier);
+    }
+
+    private float GetAuthoredCooldownSeconds(ResourceManager.ResourceType type)
     {
         if (foodCooldowns != null)
         {
@@ -174,12 +181,15 @@ public class TurtleNest : MonoBehaviour
     }
 
     /// <summary>Spawns one turtle at the nest's position. Called externally by a TurtleBed once its own placement delay elapses. Returns null if the nest is destroyed or has no turtle prefab configured.</summary>
-    public GameObject SpawnTurtle()
+    public GameObject SpawnTurtle() => SpawnUnit(turtlePrefab);
+
+    /// <summary>Spawns one unit prefab at the nest's position, parented and positioned exactly like a turtle. The general form of SpawnTurtle, so anything that hatches at the nest (a crab recruit, see CrabRecruitUpgradeCard) shares the same destroyed-nest guard and spawn parent rather than instantiating itself. Returns null if the nest is destroyed or prefab is null.</summary>
+    public GameObject SpawnUnit(GameObject prefab)
     {
-        if (IsDestroyed || turtlePrefab == null) return null;
+        if (IsDestroyed || prefab == null) return null;
 
         Transform parent = turtleSpawnParent != null ? turtleSpawnParent : transform;
-        return Instantiate(turtlePrefab, transform.position, Quaternion.identity, parent);
+        return Instantiate(prefab, transform.position, Quaternion.identity, parent);
     }
 
     private void OnTriggerEnter2D(Collider2D other)
@@ -226,14 +236,14 @@ public class TurtleNest : MonoBehaviour
         if (dispenseCoroutine == null) dispenseCoroutine = StartCoroutine(ProcessDispenseQueue());
     }
 
-    /// <summary>Every currently-live turtle that isn't parked at a Watchtower right now — parked turtles are on duty, not out fighting/wandering, so they're skipped for food dispensing until they dismount (see Watchtower.DismissForDay/RecallForNight and the player's own ability to pull one away at any time).</summary>
+    /// <summary>Every currently-live turtle that isn't parked at a Watchtower right now — parked turtles are on duty, not out fighting/wandering, so they're skipped for food dispensing until they dismount (see Watchtower.DismissForDay/RecallForNight and the player's own ability to pull one away at any time). Crabs are skipped outright: they're their own unit (see CrabAgent), so run-wide turtle perks including these night rations never reach them.</summary>
     private static List<TurtleAgent> GetEligibleTurtles()
     {
         List<TurtleAgent> eligible = new List<TurtleAgent>();
 
         foreach (TurtleAgent turtle in TurtleAgent.AllTurtles)
         {
-            if (turtle != null && !turtle.IsParked) eligible.Add(turtle);
+            if (turtle != null && !turtle.IsParked && !turtle.IsCrab) eligible.Add(turtle);
         }
 
         return eligible;

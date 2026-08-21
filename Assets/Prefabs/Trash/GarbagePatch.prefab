@@ -108,7 +108,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &6408112650472623738
 Transform:
   m_ObjectHideFlags: 0
@@ -229,6 +229,7 @@ Transform:
   m_Children:
   - {fileID: 6408112650472623738}
   - {fileID: 8079639907187938711}
+  - {fileID: 3197028118725905236}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &2220290257301589549
@@ -244,7 +245,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GarbagePatch
   maxSegments: 5
-  healthBar: {fileID: 4396049796601843593}
   debrisSprites:
   - {fileID: 3069405785966964630, guid: d85e19c8980ea6a4bbba474e145233cf, type: 3}
   - {fileID: 8001903010243223094, guid: 497379b0a9f6c3c49a98e4aa548a368c, type: 3}
@@ -266,8 +266,39 @@ MonoBehaviour:
   - {fileID: 4033486654625094369, guid: de4efeedcdc14674a8dddba5aca25b86, type: 3}
   - {fileID: 8039085209550572691, guid: e2363222da9be8f4787a010d12c7845f, type: 3}
   debrisRoot: {fileID: 8079639907187938711}
-  debrisCount: 50
-  debrisClusterRadius: 3
+  debrisCount: 200
+  debrisClusterRadius: 6
+  debrisRemovalCandidates: 4
+  debrisRemovalDuration: 0.8
+  sinkEffect: {fileID: 1763071780957585138}
+  debrisSinkDuration: 1.2
+  debrisSinkScale: 0.55
+  debrisSinkShake: 0.06
+  debrisSinkShakeFrequency: 20
+  debrisSinkCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
 --- !u!114 &1456146421371296874
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -282,7 +313,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GarbagePatchOrbit
   orbitLinearSpeed: 2.2
   debrisSpinRoot: {fileID: 8079639907187938711}
-  selfSpinDegreesPerSecond: 5
+  selfSpinDegreesPerSecond: 3
 --- !u!114 &-8244412810655994038
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -432,3 +463,70 @@ SpriteRenderer:
   m_WasSpriteAssigned: 1
   m_SpriteSortPoint: 0
   m_BlendShapeWeights: []
+--- !u!1001 &4955556656987984634
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 5921741470103169634}
+    m_Modifications:
+    - target: {fileID: 2008113544798628571, guid: 0a565711b36bfa24baf24bfba265417d, type: 3}
+      propertyPath: m_Name
+      value: WaterSplash
+      objectReference: {fileID: 0}
+    - target: {fileID: 7537773040382286254, guid: 0a565711b36bfa24baf24bfba265417d, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -0.230153
+      objectReference: {fileID: 0}
+    - target: {fileID: 7537773040382286254, guid: 0a565711b36bfa24baf24bfba265417d, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7537773040382286254, guid: 0a565711b36bfa24baf24bfba265417d, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7537773040382286254, guid: 0a565711b36bfa24baf24bfba265417d, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7537773040382286254, guid: 0a565711b36bfa24baf24bfba265417d, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7537773040382286254, guid: 0a565711b36bfa24baf24bfba265417d, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7537773040382286254, guid: 0a565711b36bfa24baf24bfba265417d, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7537773040382286254, guid: 0a565711b36bfa24baf24bfba265417d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7537773040382286254, guid: 0a565711b36bfa24baf24bfba265417d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7537773040382286254, guid: 0a565711b36bfa24baf24bfba265417d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 0a565711b36bfa24baf24bfba265417d, type: 3}
+--- !u!198 &1763071780957585138 stripped
+ParticleSystem:
+  m_CorrespondingSourceObject: {fileID: 6679433046898945032, guid: 0a565711b36bfa24baf24bfba265417d, type: 3}
+  m_PrefabInstance: {fileID: 4955556656987984634}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &3197028118725905236 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 7537773040382286254, guid: 0a565711b36bfa24baf24bfba265417d, type: 3}
+  m_PrefabInstance: {fileID: 4955556656987984634}
+  m_PrefabAsset: {fileID: 0}

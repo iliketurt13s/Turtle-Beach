@@ -29,7 +29,14 @@ public class TrashDefinition : MonoBehaviour
     /// <summary>Scatters Death Drop Count instances of a randomly-picked Death Drop Prefab around origin, each initialized with a path to nestTarget exactly like a normally round-spawned piece (mirrors ResourceNode.SpawnDrop's shape). No-op if Death Drop Prefabs is empty.</summary>
     public void SpawnDeathDrops(Vector3 origin, Transform nestTarget)
     {
-        if (deathDropPrefabs == null || deathDropPrefabs.Length == 0) return;
+        if (deathDropPrefabs == null || deathDropPrefabs.Length == 0)
+        {
+            // Reached only once death drops are actually unlocked, so this is
+            // worth surfacing: the unlock looks broken from the player's side
+            // when really no trash type has anything configured to drop.
+            Debug.LogWarning($"TrashDefinition ({displayName}): death drops are unlocked but this trash type's Death Drop Prefabs array is empty, so it drops nothing.");
+            return;
+        }
 
         for (int i = 0; i < deathDropCount; i++)
         {

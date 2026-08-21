@@ -58,25 +58,6 @@ public class DayStormCycle : MonoBehaviour
     [Tooltip("Multiplier applied to the rating budget on the final wave before the garbage patch depletes (i.e. the round spawned while it's down to its last segment) — one extra spike of difficulty right before moving to a new island. 1 = no change.")]
     [SerializeField] private float finalWaveRatingMultiplier = 1.5f;
 
-    [Serializable]
-    private struct TrashDifficultyPreset
-    {
-        public float baseRatingBudget;
-        public float linearRatingPerRound;
-        public float ratingGrowthPerRound;
-    }
-
-    private const string DifficultyIndexKey = "DifficultyIndex";
-
-    [Header("Difficulty Presets")]
-    [Tooltip("Overrides Base Rating Budget/Linear Rating Per Round/Rating Growth Per Round above at Awake, indexed by the difficulty picked on the menu's options screen (0=Easy, 1=Medium, 2=Hard) via PlayerPrefs \"DifficultyIndex\" — see MainMenuController.StartGame. Index 1 (Medium) intentionally matches this class's own defaults above, so picking Medium changes nothing.")]
-    [SerializeField] private TrashDifficultyPreset[] difficultyPresets = new TrashDifficultyPreset[3]
-    {
-        new TrashDifficultyPreset { baseRatingBudget = 5f, linearRatingPerRound = 1.25f, ratingGrowthPerRound = 1.05f },
-        new TrashDifficultyPreset { baseRatingBudget = 8f, linearRatingPerRound = 2f, ratingGrowthPerRound = 1.08f },
-        new TrashDifficultyPreset { baseRatingBudget = 12f, linearRatingPerRound = 3f, ratingGrowthPerRound = 1.12f },
-    };
-
     public int CurrentRound { get; private set; } = 1;
 
     private float phaseTimer;
@@ -93,20 +74,6 @@ public class DayStormCycle : MonoBehaviour
         phaseTimer = 0f;
         awaitingUpgradeChoice = false;
         isFirstDay = true;
-
-        ApplyDifficultyPreset();
-    }
-
-    /// <summary>Runs once, before this island's first BeginDay — overrides the three trash-scaling fields above from whichever difficulty was picked on the menu (defaulting to Medium if the key is missing, e.g. GameScene opened directly in the Editor). No need to re-apply per island: AdvanceToNextIsland only resets CurrentRound, these fields already carry forward as-is.</summary>
-    private void ApplyDifficultyPreset()
-    {
-        if (difficultyPresets == null || difficultyPresets.Length == 0) return;
-
-        int index = Mathf.Clamp(PlayerPrefs.GetInt(DifficultyIndexKey, 1), 0, difficultyPresets.Length - 1);
-        TrashDifficultyPreset preset = difficultyPresets[index];
-        baseRatingBudget = preset.baseRatingBudget;
-        linearRatingPerRound = preset.linearRatingPerRound;
-        ratingGrowthPerRound = preset.ratingGrowthPerRound;
     }
 
     private void OnDestroy()
@@ -154,13 +121,32 @@ public class DayStormCycle : MonoBehaviour
             stormOverlayEffect?.Stop();
             CurrentRound++;
 
-            if (upgradeSelectionUI != null)
+            // The run's last storm offers no upgrade pick: the cutscene that
+            // follows is about to knock the garbage patch's final segment off
+            // and end the run as a win, so a card chosen here could never be
+            // used — it just delays the win screen behind a meaningless
+            // choice. The patch's health is still pre-hit at this point (the
+            // cutscene's TakeHit hasn't run yet), so one segment left means
+            // this round is the last one.
+            bool finalStorm = GarbagePatch.Instance != null && GarbagePatch.Instance.CurrentHealth <= 1;
+
+            if (upgradeSelectionUI != null && !finalStorm)
             {
                 awaitingUpgradeChoice = true;
                 upgradeSelectionUI.Show(HandleUpgradeChoiceComplete);
             }
+            else if (garbagePatchCutsceneController != null)
+            {
+                // Skipping the pick still has to clear the storm darkening
+                // (normally UpgradeSelectionUI.Select's job) and still has to
+                // park the day clock while the cutscene and win screen run.
+                upgradeSelectionUI?.EndStormFadeOut();
+                awaitingUpgradeChoice = true;
+                HandleUpgradeChoiceComplete();
+            }
             else
             {
+                upgradeSelectionUI?.EndStormFadeOut();
                 IsStorming = false;
                 BeginDay();
             }

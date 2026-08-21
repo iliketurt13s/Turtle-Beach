@@ -8,5 +8,14 @@ using UnityEngine;
 /// </summary>
 public class UnlockTrashDeathDropsUpgradeCard : UpgradeCardDefinition
 {
-    public override void Apply() => UpgradeManager.Instance?.UnlockTrashDeathDrops();
+    public override void Apply()
+    {
+        if (UpgradeManager.Instance == null)
+        {
+            Debug.LogError($"UnlockTrashDeathDropsUpgradeCard ({DisplayName}): no UpgradeManager in the scene — death drops were NOT unlocked.");
+            return;
+        }
+
+        UpgradeManager.Instance.UnlockTrashDeathDrops();
+    }
 }

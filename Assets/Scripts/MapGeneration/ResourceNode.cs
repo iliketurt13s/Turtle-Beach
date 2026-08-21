@@ -32,6 +32,10 @@ public class ResourceNode : MonoBehaviour
     [SerializeField] private GameObject dropPrefab;
     [SerializeField] private float dropSpawnRadius = 0.5f;
 
+    [Header("Audio")]
+    [Tooltip("Played once per successful harvest hit — the tree/rock impact. Authored per prefab rather than looked up from Resource Type, so a new kind of node just brings its own clips instead of needing a case added anywhere. Leave the clip list empty for a silent node (seaweed, say).")]
+    [SerializeField] private SoundEffect harvestHitSound = new SoundEffect();
+
     public ResourceManager.ResourceType ResourceType => resourceType;
 
     /// <summary>False while this node is depleted/dormant.</summary>
@@ -43,6 +47,12 @@ public class ResourceNode : MonoBehaviour
 
     private int hitsTaken;
     private bool isDepleted;
+
+    /// <summary>Extra harvest hits this node yields before going dormant, on top of the authored Hits To Deplete — see SetBonusHitsToDeplete.</summary>
+    private int bonusHitsToDeplete;
+
+    /// <summary>What this node is actually worth per cycle right now. Read at the moment of a hit rather than baked in at Deplete time, so a bonus granted mid-cycle applies to the tree the player is already chopping instead of only the next one.</summary>
+    private int EffectiveHitsToDeplete => Mathf.Max(1, hitsToDeplete + bonusHitsToDeplete);
     private float respawnTimer;
     private readonly HashSet<ResourceRespawnBooster> activeBoosters = new HashSet<ResourceRespawnBooster>();
     private SquashAndStretch squashAndStretch;
@@ -77,9 +87,12 @@ public class ResourceNode : MonoBehaviour
         if (isDepleted) return;
 
         squashAndStretch?.Play();
+        // Alongside the squash rather than inside Deplete: this is the impact
+        // of one hit, so it fires on every one of them, including the last.
+        harvestHitSound.Play(transform.position);
 
         hitsTaken++;
-        if (hitsTaken >= hitsToDeplete) Deplete();
+        if (hitsTaken >= EffectiveHitsToDeplete) Deplete();
     }
 
     private void Deplete()
@@ -97,6 +110,16 @@ public class ResourceNode : MonoBehaviour
 
         if (visual != null) visual.SetActive(true);
     }
+
+    /// <summary>
+    /// Sets how many extra harvest hits this node yields before going dormant
+    /// — i.e. how much more resource one cycle of it is worth.
+    ///
+    /// Overwrites rather than accumulates, because the caller (see PlanterPot)
+    /// polls a run-wide cumulative total and pushes it every time it changes;
+    /// an additive setter would compound that total into itself on every poll.
+    /// </summary>
+    public void SetBonusHitsToDeplete(int bonus) => bonusHitsToDeplete = Mathf.Max(0, bonus);
 
     public void RegisterBooster(ResourceRespawnBooster booster) => activeBoosters.Add(booster);
     public void UnregisterBooster(ResourceRespawnBooster booster) => activeBoosters.Remove(booster);

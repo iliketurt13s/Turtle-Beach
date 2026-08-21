@@ -1,0 +1,70 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &7039530252411200132
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1891788659259855912}
+  - component: {fileID: 6623615968523683738}
+  - component: {fileID: -6607990429612198491}
+  m_Layer: 0
+  m_Name: TrashDeathDropsCard
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1891788659259855912
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7039530252411200132}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &6623615968523683738
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7039530252411200132}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ac278e35db9747a4ab9fcd56ca880c8d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UnlockTrashDeathDropsUpgradeCard
+  displayName: Death Drops
+  icon: {fileID: -465537723612623917, guid: cf5295a402a5b314cb251e432438ee27, type: 3}
+  description: Larger trash items now drop smaller trash when destroyed.
+  stackable: 0
+--- !u!114 &-6607990429612198491
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7039530252411200132}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6838106fdd695024cb88942e69b39af2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GameModifierDefinition
+  id: death_drops
+  displayName: 
+  description: 
+  icon: {fileID: 7195619452074608692, guid: 9426e1a20feb5614891283d302b42859, type: 3}
+  unpressedSprite: {fileID: 7195619452074608692, guid: 9426e1a20feb5614891283d302b42859, type: 3}
+  pressedSprite: {fileID: -3029151053811251408, guid: 600fcf69e9f9ea94c9ab1e1efe3d1d5a, type: 3}
+  scoreMultiplierBonus: 0.3

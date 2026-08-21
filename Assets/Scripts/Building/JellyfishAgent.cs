@@ -146,7 +146,17 @@ public class JellyfishAgent : MonoBehaviour
         if (attacker == null) return false;
 
         hitsTaken++;
-        attacker.CollectResourceUnit(ResourceManager.ResourceType.JellyfishGuts, transform.position);
+
+        // Mirrors Coconut.RegisterHit exactly — see its comment for why the
+        // roll affects units collected but never hitsTaken.
+        int amount = UpgradeManager.Instance != null
+            ? UpgradeManager.Instance.RollHarvestAmount(ResourceManager.ResourceType.JellyfishGuts, attacker)
+            : 1;
+
+        for (int i = 0; i < amount; i++)
+        {
+            if (!attacker.CollectResourceUnit(ResourceManager.ResourceType.JellyfishGuts, transform.position)) break; // full — no loss, just stop adding
+        }
 
         bool consumed = hitsTaken >= hitsRequired;
         if (consumed) Destroy(gameObject);

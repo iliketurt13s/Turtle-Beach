@@ -95,6 +95,20 @@ public class IslandGenerator : MonoBehaviour
     [Tooltip("Of a cell's 8 neighbors, how many must be land for the cell itself to become/stay land during smoothing. Higher = rounder, more conservative coastlines (and fewer surviving coves).")]
     [SerializeField, Range(1, 8)] private int smoothingNeighborThreshold = 4;
 
+    [Header("Chunk Carving")]
+    [Tooltip("How many land tiles are carved back out of the finished island, in chunks. Runs AFTER the island is generated and reduced to one landmass, so this is an exact count of tiles rather than a nudge to the shape field: ask for 150 and 150 go, every seed, every time. 0 disables carving entirely.\n\nThis is the knob the Crescents section above isn't — a crescent bite is subtracted from the shape field BEFORE thresholding, calibration and smoothing, so how much land it actually costs varies run to run. Set Crescent Chance to 0 if you want carving to be the only thing taking bites out of the island.")]
+    [SerializeField, Min(0)] private int carveTileCount = 150;
+    [Tooltip("How many separate chunks that budget is split across. 1 takes it all out in one bite; higher scatters the same total loss around the island as several smaller ones.")]
+    [SerializeField, Min(1)] private int carveChunkCount = 3;
+    [Tooltip("How unevenly the budget is split between chunks. 0 makes every chunk the same size; 1 lets one be anywhere from nothing up to double the average. The TOTAL removed is the same either way.")]
+    [SerializeField, Range(0f, 1f)] private float carveChunkSizeVariance = 0.4f;
+    [Tooltip("Chance each chunk starts from a coastal tile, biting into the island's outline, rather than from anywhere on it, opening an inland lagoon. 1 is all coast, 0 is all lagoons. Coastal bites read as erosion; lagoons read as damage.")]
+    [SerializeField, Range(0f, 1f)] private float carveCoastalBias = 0.85f;
+    [Tooltip("Carving stops rather than taking the island below this many tiles — a floor against a budget typed with an extra digit, since an island carved down to nothing has nowhere to put the nest.")]
+    [SerializeField, Min(0)] private int carveMinRemainingLand = 60;
+    [Tooltip("Fills carved water back in as SHALLOW water, however far from land it ends up. Strongly recommended on: TrashSpawner picks its clusters from open DEEP water and scores them by closeness to the map center (see PickClusterCenter), so a carved lagoon big enough to have deep water in the middle is the most attractive spawn site on the whole map — trash would spawn inside the island. Keeping carved water shallow also lets turtles swim across it, since they only ever refuse deep water.")]
+    [SerializeField] private bool carvedWaterStaysShallow = true;
+
     [Header("Deep Water Outskirts")]
     [Tooltip("Extra tiles of plain deep water painted on every side of the core map onto Deep Water Outskirts Tilemap above, purely for visual/camera purposes — the core map (island shape, trash spawn range, pathfinding grid) is entirely unaffected. 0 = no outskirts painted even if the tilemap is assigned.")]
     [SerializeField, Min(0)] private int outskirtMargin = 150;
@@ -131,6 +145,12 @@ public class IslandGenerator : MonoBehaviour
         new IslandSizePreset { width = 80, height = 80, targetLandFraction = 0.22f, blobCount = 2, blobMinRadius = 7f, blobMaxRadius = 12f },
         new IslandSizePreset { width = 64, height = 64, targetLandFraction = 0.2f, blobCount = 2, blobMinRadius = 5f, blobMaxRadius = 9f },
     };
+
+    [Header("Ocean Ring")]
+    [Tooltip("The Rule Tile drawn in a band of open water hugging the coastline, giving the ocean a shoreline that meets the shallows flush. Painted onto Water Tilemap alongside the plain Water Tile, NOT onto a layer of its own — which is the whole point: the ring has to see ocean on its seaward side to know not to draw a second coastline there, and a Rule Tile only ever sees its own tilemap. This MUST be an Ocean Rule Tile (Create > 2D > Tiles > Ocean Rule Tile), not a stock Rule Tile: a stock one tests neighbours with `other == this`, so it reads the plain tile beside the band as land and rings the band with a second coastline facing the open sea. Leave unassigned for a flat ocean with no ring.")]
+    [SerializeField] private TileBase oceanRingTile;
+    [Tooltip("How many cells deep the ring band reaches out from the shallows. Only these cells are Rule Tiles — everything beyond, including the whole outskirts rectangle, is the plain Water Tile — so this is the dial that decides how much rule evaluation a generation costs. Keep it just wide enough for the widest transition your tile set actually draws. 0 disables the ring.")]
+    [SerializeField, Min(0)] private int oceanRingWidth = 1;
 
     [Header("Placeholder Art")]
     [Tooltip("Leave unassigned to auto-generate a placeholder tile. Assign a real Tile asset to use imported art instead.")]
@@ -252,14 +272,63 @@ public class IslandGenerator : MonoBehaviour
         land = IslandNoiseMap.SmoothLandMask(land, smoothingIterations, smoothingNeighborThreshold, edgeWaterMargin);
         IslandNoiseMap.ForceCenterLand(land, centerLandGuaranteeRadius);
         land = IslandNoiseMap.KeepIslandContainingCenter(land);
+
+        // Carving runs on the finished single landmass, not on the shape field,
+        // which is the whole point of it — see IslandNoiseMap.CarveChunks. It
+        // can sever an outlying limb, so the island is reduced to one piece
+        // again straight afterwards; that second pass is why the achieved
+        // count logged below can exceed the budget asked for.
+        bool[,] carved = CarveChunksOutOfIsland(land);
+        int carvedTileCount = CountLandTiles(carved);
+        if (carvedTileCount > 0) land = IslandNoiseMap.KeepIslandContainingCenter(land);
+
         bool[,] shallow = IslandNoiseMap.BuildShallowWaterMask(land, shallowWaterRadius, edgeWaterMargin);
+        if (carvedWaterStaysShallow) MarkCarvedWaterShallow(shallow, carved, land);
 
         int landTileCount = CountLandTiles(land);
         Debug.Log($"IslandGenerator: island area = {landTileCount} tiles on a {width}x{height} map ({(float)landTileCount / (width * height):P1} of total) — target land fraction was {targetLandFraction:P0}.");
 
+        if (carveTileCount > 0)
+        {
+            Debug.Log($"IslandGenerator: carved {carvedTileCount} tiles out of the island across {carveChunkCount} chunk(s) — asked for {carveTileCount}. A shortfall means the island ran out of carvable land (see Carve Min Remaining Land); the area above is after carving, including anything the carve severed from the mainland.");
+        }
+
         PaintTilemaps(land, shallow);
         SpawnTurtleNest();
         IslandGenerated?.Invoke();
+    }
+
+    /// <summary>Packs the serialized carving fields into IslandNoiseMap's settings struct and runs the pass, returning the mask of what it took. The protected center is deliberately the same radius ForceCenterLand stamps, rather than a field of its own — they describe one thing (the ground the nest stands on), and two numbers for it could disagree.</summary>
+    private bool[,] CarveChunksOutOfIsland(bool[,] land)
+    {
+        IslandNoiseMap.ChunkCarveSettings settings = new IslandNoiseMap.ChunkCarveSettings
+        {
+            TileBudget = carveTileCount,
+            ChunkCount = carveChunkCount,
+            ChunkSizeVariance = carveChunkSizeVariance,
+            CoastalBias = carveCoastalBias,
+            ProtectedCenterRadius = centerLandGuaranteeRadius,
+            MinRemainingLand = carveMinRemainingLand,
+        };
+
+        return IslandNoiseMap.CarveChunks(land, settings, seed);
+    }
+
+    /// <summary>Marks every carved cell as shallow water — see Carved Water Stays Shallow for why that matters. Skips any cell the second KeepIslandContainingCenter pass didn't actually leave as water (it can't turn water back into land, but the guard keeps this honest if that ever changes).</summary>
+    private static void MarkCarvedWaterShallow(bool[,] shallow, bool[,] carved, bool[,] land)
+    {
+        int width = carved.GetLength(0);
+        int height = carved.GetLength(1);
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                if (!carved[x, y] || land[x, y]) continue;
+
+                shallow[x, y] = true;
+            }
+        }
     }
 
     private void SpawnTurtleNest()
@@ -326,12 +395,31 @@ public class IslandGenerator : MonoBehaviour
         TileBase[] shallowWaterTiles = new TileBase[width * height];
         TileBase[] sandTiles = new TileBase[width * height];
 
+        bool[,] ring = BuildOceanRingMask(land, shallow);
+
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
                 int index = y * width + x;
-                waterTiles[index] = waterTile;
+
+                // The water tilemap is the OCEAN, not a backing sheet under
+                // everything: land and shallow cells are left empty on it,
+                // which is exactly what lets the ring tile see where the water
+                // stops and draw its coastline there. Every consumer reads this
+                // map through a "water AND NOT sand AND NOT shallow" test
+                // anyway (IslandGenerator.IsDeepWater, TrashSpawner), so they
+                // get the same answers as when it was painted solid. The one
+                // caller that cares about the tilemap's EXTENT rather than its
+                // contents is PathfindingManager, which takes its A* search
+                // bounds from cellBounds — hence the border frame, which pins
+                // those bounds to the full map however the island falls.
+                bool isOcean = !land[x, y] && !shallow[x, y];
+                bool onBorder = x == 0 || y == 0 || x == width - 1 || y == height - 1;
+
+                if (isOcean) waterTiles[index] = ring != null && ring[x, y] ? oceanRingTile : waterTile;
+                else waterTiles[index] = onBorder ? waterTile : null;
+
                 shallowWaterTiles[index] = shallow[x, y] ? shallowWaterTile : null;
                 sandTiles[index] = land[x, y] ? sandTile : null;
             }
@@ -340,7 +428,47 @@ public class IslandGenerator : MonoBehaviour
         waterTilemap.SetTilesBlock(bounds, waterTiles);
         if (shallowWaterTilemap != null) shallowWaterTilemap.SetTilesBlock(bounds, shallowWaterTiles);
         sandTilemap.SetTilesBlock(bounds, sandTiles);
+
+        // All three refreshed, not just sand: Sand is a Rule Tile and Water
+        // carries one too (the ring), and a Rule Tile picks its sprite from its
+        // neighbours — which a block set is still filling in around it as it
+        // goes, so a tile placed early can keep the sprite it chose while half
+        // the map was still empty. Shallow Water is a plain tile today and
+        // refreshing it costs nothing; it's included so making it a Rule Tile
+        // later isn't a silent trap.
+        waterTilemap.RefreshAllTiles();
+        if (shallowWaterTilemap != null) shallowWaterTilemap.RefreshAllTiles();
         sandTilemap.RefreshAllTiles();
+    }
+
+    /// <summary>
+    /// Which ocean cells get the ring tile: everything within Ocean Ring Width
+    /// of land or shallow water, and nothing else. Null when there's no ring to
+    /// draw, which the caller reads as "plain ocean everywhere".
+    ///
+    /// Reuses BuildShallowWaterMask, seeded with land AND shallow rather than
+    /// land alone — it's a distance-from-a-mask flood fill, and the shallows
+    /// are what the ocean actually meets. Nothing about it is specific to
+    /// shallow water, and growing a band outward from a mask is exactly the job
+    /// it already does.
+    /// </summary>
+    private bool[,] BuildOceanRingMask(bool[,] land, bool[,] shallow)
+    {
+        if (oceanRingTile == null || oceanRingWidth <= 0) return null;
+
+        bool[,] coast = new bool[width, height];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                coast[x, y] = land[x, y] || shallow[x, y];
+            }
+        }
+
+        // edgeWaterMargin 0: that argument keeps LAND off the map border, which
+        // has nothing to do with a band of water, and passing the real one
+        // would carve a gap in the ring wherever it ran near the edge.
+        return IslandNoiseMap.BuildShallowWaterMask(coast, oceanRingWidth, 0);
     }
 
     /// <summary>Fills a much larger rectangle surrounding the core map (see Outskirt Margin) with plain deep water tiles on Deep Water Outskirts Tilemap, purely so the ocean visually extends past the play area — never read by island generation, pathfinding, or trash spawning, which all only ever look at the core Water Tilemap. No-op if the tilemap isn't assigned or the margin is 0.</summary>

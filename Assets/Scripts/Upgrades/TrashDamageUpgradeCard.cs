@@ -5,5 +5,14 @@ public class TrashDamageUpgradeCard : UpgradeCardDefinition
 {
     [SerializeField] private int damageBonusAdded = 1;
 
-    public override void Apply() => UpgradeManager.Instance?.AddTrashDamageBonus(damageBonusAdded);
+    public override void Apply()
+    {
+        if (UpgradeManager.Instance == null)
+        {
+            Debug.LogError($"TrashDamageUpgradeCard ({DisplayName}): no UpgradeManager in the scene — trash damage bonus was NOT applied.");
+            return;
+        }
+
+        UpgradeManager.Instance.AddTrashDamageBonus(damageBonusAdded);
+    }
 }

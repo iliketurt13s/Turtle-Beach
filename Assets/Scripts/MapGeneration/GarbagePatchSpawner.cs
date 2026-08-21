@@ -19,7 +19,7 @@ public class GarbagePatchSpawner : MonoBehaviour
     private const string GameModeIndexKey = "GameModeIndex";
 
     [Header("Game Mode Presets")]
-    [Tooltip("Hit points (rounds survived) before the garbage patch depletes and the run moves to the next island, indexed by the game mode picked on the menu's options screen (0=Big Island, 1=Cove, 2=Archipelago) via PlayerPrefs \"GameModeIndex\" — see MainMenuController.StartGame. Big Island's huge value is effectively \"never\" rather than a true structural block — GarbagePatchHealthBar just keeps every pip lit, no perf cost. Index 2 (Archipelago) intentionally matches GarbagePatch's own default Max Segments, so picking Archipelago changes nothing.")]
+    [Tooltip("Hit points (rounds survived) before the garbage patch depletes and the run moves to the next island, indexed by the game mode picked on the menu's options screen (0=Big Island, 1=Cove, 2=Archipelago) via PlayerPrefs \"GameModeIndex\" — see MainMenuController.StartGame. Big Island's huge value is effectively \"never\" rather than a true structural block — the debris pile just stays at full count, since each hit thins it by a proportion that rounds to nothing (see GarbagePatch.TargetPieceCount). No perf cost. Index 2 (Archipelago) intentionally matches GarbagePatch's own default Max Segments, so picking Archipelago changes nothing.")]
     [SerializeField] private int[] roundsPerIslandByMode = { 999999, 10, 5 };
 
     private GameObject spawnedPatch;

@@ -186,7 +186,7 @@ MonoBehaviour:
   minBurstInterval: 0.4
   rotationForce: 0.5
   waypointArrivalDistance: 0.5
-  extraObstacleClearance: 0
+  extraObstacleClearance: 1
   spriteRenderer: {fileID: 7424312002641498204}
 --- !u!114 &3210905555894835691
 MonoBehaviour:
@@ -245,8 +245,6 @@ MonoBehaviour:
   rating: 5
   towerDamageMultiplier: 1
   deathDropPrefabs:
-  - {fileID: 3912190900667989718, guid: ee540070de125b54fa260853c132fe92, type: 3}
-  - {fileID: 3912190900667989718, guid: ee540070de125b54fa260853c132fe92, type: 3}
   - {fileID: 3912190900667989718, guid: ee540070de125b54fa260853c132fe92, type: 3}
   - {fileID: 3912190900667989718, guid: ee540070de125b54fa260853c132fe92, type: 3}
   - {fileID: 8325373002651838158, guid: 633700122dc808440bb02f426cd32967, type: 3}

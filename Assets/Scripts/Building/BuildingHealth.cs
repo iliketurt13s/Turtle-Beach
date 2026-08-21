@@ -6,8 +6,9 @@ using UnityEngine;
 /// Attach to any building prefab to give it hit points that trash chips away
 /// at on contact. Destroys the building once health reaches zero (if this is
 /// a wall, WallAutoTile's own OnDestroy already unregisters it from WallGrid
-/// and refreshes neighbor sprites). All currently-alive buildings can be
-/// healed back to full at once via HealAll, e.g. when a storm ends.
+/// and refreshes neighbor sprites). All currently-alive buildings are repaired
+/// at once via HealAll when a storm ends — back to full normally, or by a
+/// fraction of max health under the Shoddy Repairs run modifier (see Heal).
 /// </summary>
 public class BuildingHealth : MonoBehaviour
 {
@@ -99,10 +100,10 @@ public class BuildingHealth : MonoBehaviour
         ApplyDamage(damage);
     }
 
-    /// <summary>Applies damage from any source, collision or not (e.g. Battery's acid AoE via BatteryAcidOnDeath). Shared by OnCollisionEnter2D so both paths destroy exactly the same way. No-ops entirely (no squash, no health change) if Hit Cooldown hasn't elapsed since the last damage instance, so a trash piece bouncing repeatedly against this building can't melt it in one physical contact flurry.</summary>
-    public void ApplyDamage(int amount)
+    /// <summary>Applies damage from any source, collision or not (e.g. Battery's acid AoE via BatteryAcidOnDeath). Shared by OnCollisionEnter2D so both paths destroy exactly the same way. No-ops entirely (no squash, no health change) if Hit Cooldown hasn't elapsed since the last damage instance, so a trash piece bouncing repeatedly against this building can't melt it in one physical contact flurry — unless ignoreCooldown is set (BatteryAcidPuddle's own once-per-second tick is already self-throttled, and sharing this per-building cooldown with unrelated collision hits from other trash swarming the same building would otherwise starve it of ever actually landing during a real siege).</summary>
+    public void ApplyDamage(int amount, bool ignoreCooldown = false)
     {
-        if (Time.time - lastHitTime < hitCooldown) return;
+        if (!ignoreCooldown && Time.time - lastHitTime < hitCooldown) return;
         lastHitTime = Time.time;
 
         currentHealth -= amount;
@@ -115,9 +116,27 @@ public class BuildingHealth : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// The end-of-storm repair. Normally a heal straight back to full; under
+    /// the Shoddy Repairs run modifier (UpgradeManager.StormRepairFraction,
+    /// 1 when it isn't taken) it instead adds that fraction of max health, so
+    /// damage accumulates across storms and a building chipped hard two nights
+    /// running eventually falls to a night that wouldn't have finished it on
+    /// its own.
+    ///
+    /// Ceil rather than floor on the fraction: a small building — a wall with
+    /// a handful of hit points — would otherwise round its repair down to
+    /// nothing and never recover at all, which is a far harsher modifier than
+    /// the one described.
+    /// </summary>
     private void Heal()
     {
-        currentHealth = maxHealth;
+        float fraction = UpgradeManager.Instance != null ? UpgradeManager.Instance.StormRepairFraction : 1f;
+
+        currentHealth = fraction >= 1f
+            ? maxHealth
+            : Mathf.Min(maxHealth, currentHealth + Mathf.CeilToInt(maxHealth * Mathf.Max(0f, fraction)));
+
         if (healthBar != null) healthBar.SetHealth(currentHealth, maxHealth);
     }
 

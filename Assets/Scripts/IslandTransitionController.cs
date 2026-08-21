@@ -64,6 +64,16 @@ public class IslandTransitionController : MonoBehaviour
             if (node != null) Destroy(node.gameObject);
         }
 
+        // Coral carries neither BuildingHealth nor ResourceNode (see CoralReef
+        // for why), so no pass above catches it — without this the old
+        // island's reef would be left floating over the new one's shallows.
+        // The Coral Reef card re-grows it via UpgradeManager's per-island
+        // respawn, same as the Seaweed card's patch.
+        foreach (CoralReef reef in new List<CoralReef>(CoralReef.AllReefs))
+        {
+            if (reef != null) Destroy(reef.gameObject);
+        }
+
         // Destroy() defers actual removal (and each object's OnDisable) to the
         // end of this frame, so the colliders above are still physically live
         // right now. Wait a frame before regenerating so StarterTurtleBedSpawner's

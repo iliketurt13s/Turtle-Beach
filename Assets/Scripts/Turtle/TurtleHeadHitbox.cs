@@ -26,10 +26,14 @@ using UnityEngine;
 /// </summary>
 public class TurtleHeadHitbox : MonoBehaviour
 {
+    [Tooltip("Longest this hitbox will go without a reload, in seconds, regardless of stroke cadence. 0 (the default, and what the Turtle prefab uses) keeps hits tied purely to fin strokes as described above. Above 0 adds a timer on top, so a unit can land hits faster than it swims — this is what gives the Crab prefab its much shorter attack interval.")]
+    [SerializeField, Min(0f)] private float maxReloadInterval = 0f;
+
     private TurtleAgent agent;
     private TurtleLocomotion locomotion;
     private Collider2D headCollider;
     private Coroutine reloadRoutine;
+    private float sinceLastReload;
 
     private void Awake()
     {
@@ -56,10 +60,22 @@ public class TurtleHeadHitbox : MonoBehaviour
         if (agent != null) agent.HandleHeadHit(other);
     }
 
+    /// <summary>Only does anything when Max Reload Interval is above zero: forces a reload whenever that long has passed since the last one, so a unit configured with a short interval keeps landing hits between (and faster than) its own fin strokes. Left entirely inert on the Turtle prefab, where the stroke-driven reload above is the only one.</summary>
+    private void Update()
+    {
+        if (maxReloadInterval <= 0f) return;
+
+        sinceLastReload += Time.deltaTime;
+        if (sinceLastReload < maxReloadInterval) return;
+
+        ReloadCollision();
+    }
+
     private void ReloadCollision()
     {
         if (headCollider == null || reloadRoutine != null) return;
 
+        sinceLastReload = 0f;
         reloadRoutine = StartCoroutine(ReloadCollisionRoutine());
     }
 

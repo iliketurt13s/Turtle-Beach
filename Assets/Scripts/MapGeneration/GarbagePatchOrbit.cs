@@ -4,10 +4,11 @@ using UnityEngine;
 /// Slowly orbits this transform around the world origin (where the nest
 /// always sits — see IslandGenerator.SpawnTurtleNest) at a fixed radius, plus
 /// an independent slow spin applied only to Debris Spin Root (the debris
-/// pile), never to this object's own transform — so the health bar, which
-/// GarbagePatch keeps as a plain (non-spinning) child of the root, always
-/// stays at the same fixed offset below the patch instead of tumbling along
-/// with it. The only parametric continuous-motion object in the project —
+/// pile), never to this object's own transform — so anything else parented to
+/// the patch stays upright while the pile tumbles. Keeping the spin on a child
+/// also means GarbagePatch can measure a debris piece's distance from the
+/// pile's center in plain local space, whatever this is currently doing (see
+/// GarbagePatch.RemoveOneDebrisPiece). The only parametric continuous-motion object in the project —
 /// everything else (turtles, trash, jellyfish) moves via physics or
 /// pathfinding — so this is deliberately self-contained and never touches
 /// PathfindingManager.

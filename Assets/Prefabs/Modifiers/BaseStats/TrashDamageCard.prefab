@@ -1,0 +1,71 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &4895182695440452321
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1258736753263873241}
+  - component: {fileID: 5631186214948498465}
+  - component: {fileID: 875154294759693598}
+  m_Layer: 0
+  m_Name: TrashDamageCard
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1258736753263873241
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4895182695440452321}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &5631186214948498465
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4895182695440452321}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4aaf638433da8104bb3cfd6ee96004ab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TrashDamageUpgradeCard
+  displayName: Sharp Edges
+  icon: {fileID: -7189787186886871053, guid: e8df904fb3e91df4eb9b7cffca92b99a, type: 3}
+  description: Trash now does extra damage to your buildings.
+  stackable: 1
+  damageBonusAdded: 1
+--- !u!114 &875154294759693598
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4895182695440452321}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6838106fdd695024cb88942e69b39af2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GameModifierDefinition
+  id: sharp_edges
+  displayName: 
+  description: 
+  icon: {fileID: -4046114634305581011, guid: a62f68df41df6eb4795647e817c8cc14, type: 3}
+  unpressedSprite: {fileID: -4046114634305581011, guid: a62f68df41df6eb4795647e817c8cc14, type: 3}
+  pressedSprite: {fileID: -8805804270621140671, guid: 5643fc1aeda85c34388238f8b268b939, type: 3}
+  scoreMultiplierBonus: 0.15
